@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Bookmark, Folder, Settings, Proposal } from './types';
+import { Bookmark, Folder, Settings, Proposal, HistoryEntry } from './types';
 
 // Mock Initial Data
 const initialBookmarks: Bookmark[] = [
@@ -31,14 +31,22 @@ type AppContextType = {
   bookmarks: Bookmark[];
   folders: Folder[];
   settings: Settings;
+  history: HistoryEntry[];
   setBookmarks: React.Dispatch<React.SetStateAction<Bookmark[]>>;
   setFolders: React.Dispatch<React.SetStateAction<Folder[]>>;
   setSettings: React.Dispatch<React.SetStateAction<Settings>>;
   updateBookmark: (id: string, updates: Partial<Bookmark>) => void;
   deleteBookmark: (id: string) => void;
+  addBookmark: (bookmark: Bookmark) => void;
+  batchUpdateBookmarks: (newBookmarks: Bookmark[], description: string) => void;
+  bulkDeleteBookmarks: (ids: string[], description: string) => void;
   updateFolder: (id: string, updates: Partial<Folder>) => void;
   addFolder: (folder: Folder) => void;
   deleteFolder: (id: string) => void;
+  revertToState: (id: string) => void;
+  clearHistory: () => void;
+  injectPresetData: (name: string, bms: Bookmark[], fols: Folder[]) => void;
+  clearDatabase: () => void;
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -59,6 +67,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : initialSettings;
   });
 
+  const [history, setHistory] = useState<HistoryEntry[]>(() => {
+    const saved = localStorage.getItem('bm_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   useEffect(() => {
     localStorage.setItem('bm_bookmarks', JSON.stringify(bookmarks));
   }, [bookmarks]);
@@ -76,38 +89,104 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [settings]);
 
+  useEffect(() => {
+    localStorage.setItem('bm_history', JSON.stringify(history));
+  }, [history]);
+
+  const pushHistory = (description: string, currentBookmarks: Bookmark[], currentFolders: Folder[]) => {
+    setHistory(prev => {
+      const entry: HistoryEntry = {
+        id: crypto.randomUUID(),
+        bookmarks: currentBookmarks,
+        folders: currentFolders,
+        timestamp: Date.now(),
+        description
+      };
+      return [entry, ...prev].slice(0, 10);
+    });
+  };
+
   const updateBookmark = (id: string, updates: Partial<Bookmark>) => {
+    const bm = bookmarks.find(b => b.id === id);
+    pushHistory(`Updated bookmark: ${bm ? bm.title : id}`, bookmarks, folders);
     setBookmarks(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
   };
 
   const deleteBookmark = (id: string) => {
+    const bm = bookmarks.find(b => b.id === id);
+    pushHistory(`Deleted bookmark: ${bm ? bm.title : id}`, bookmarks, folders);
     setBookmarks(prev => prev.filter(b => b.id !== id));
   };
 
+  const addBookmark = (bookmark: Bookmark) => {
+    pushHistory(`Added bookmark: ${bookmark.title}`, bookmarks, folders);
+    setBookmarks(prev => [bookmark, ...prev]);
+  };
+
+  const batchUpdateBookmarks = (newBookmarks: Bookmark[], description: string) => {
+    pushHistory(description, bookmarks, folders);
+    setBookmarks(newBookmarks);
+  };
+
+  const bulkDeleteBookmarks = (ids: string[], description: string) => {
+    pushHistory(description, bookmarks, folders);
+    setBookmarks(prev => prev.filter(b => !ids.includes(b.id)));
+  };
+
   const updateFolder = (id: string, updates: Partial<Folder>) => {
+    const fol = folders.find(f => f.id === id);
+    pushHistory(`Updated folder: ${fol ? fol.name : id}`, bookmarks, folders);
     setFolders(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
   };
 
   const addFolder = (folder: Folder) => {
+    pushHistory(`Added folder: ${folder.name}`, bookmarks, folders);
     setFolders(prev => [...prev, folder]);
   };
 
   const deleteFolder = (id: string) => {
+    const fol = folders.find(f => f.id === id);
+    pushHistory(`Deleted folder: ${fol ? fol.name : id}`, bookmarks, folders);
     setFolders(prev => prev.filter(f => f.id !== id));
-    // Orphan bookmarks
     setBookmarks(prev => prev.map(b => b.folderId === id ? { ...b, folderId: null } : b));
+  };
+
+  const revertToState = (id: string) => {
+    const entry = history.find(h => h.id === id);
+    if (!entry) return;
+    pushHistory(`Reverted to: ${entry.description}`, bookmarks, folders);
+    setBookmarks(entry.bookmarks);
+    setFolders(entry.folders);
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+  };
+
+  const injectPresetData = (name: string, bms: Bookmark[], fols: Folder[]) => {
+    pushHistory(`Injected preset: ${name}`, bookmarks, folders);
+    setBookmarks(bms);
+    setFolders(fols);
+  };
+
+  const clearDatabase = () => {
+    pushHistory('Cleared bookmarks and folders database', bookmarks, folders);
+    setBookmarks([]);
+    setFolders([]);
   };
 
   return (
     <AppContext.Provider value={{
-      bookmarks, folders, settings,
+      bookmarks, folders, settings, history,
       setBookmarks, setFolders, setSettings,
-      updateBookmark, deleteBookmark, updateFolder, addFolder, deleteFolder
+      updateBookmark, deleteBookmark, addBookmark, batchUpdateBookmarks, bulkDeleteBookmarks,
+      updateFolder, addFolder, deleteFolder, revertToState, clearHistory, injectPresetData, clearDatabase
     }}>
       {children}
     </AppContext.Provider>
   );
 };
+
 
 export const useAppContext = () => {
   const context = useContext(AppContext);

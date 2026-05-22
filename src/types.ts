@@ -35,3 +35,11 @@ export type Proposal = {
   promptContext: string;
 };
 
+export type HistoryEntry = {
+  id: string;
+  bookmarks: Bookmark[];
+  folders: Folder[];
+  timestamp: number;
+  description: string;
+};
+

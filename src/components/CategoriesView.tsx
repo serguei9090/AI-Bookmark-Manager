@@ -4,7 +4,7 @@ import { useAppContext } from '../store';
 import { Folder } from '../types';
 
 export function CategoriesView() {
-  const { bookmarks, folders, setBookmarks, addFolder, deleteFolder, updateFolder, settings } = useAppContext();
+  const { bookmarks, folders, batchUpdateBookmarks, addFolder, deleteFolder, updateFolder, settings } = useAppContext();
   const [isSorting, setIsSorting] = useState(false);
   const [isProposing, setIsProposing] = useState(false);
   
@@ -35,10 +35,11 @@ export function CategoriesView() {
         });
         const data = await res.json();
         if (data.success && data.mapping) {
-          setBookmarks(prev => prev.map(b => ({
+          const updatedBms = bookmarks.map(b => ({
             ...b,
             folderId: data.mapping[b.id] !== undefined ? data.mapping[b.id] : b.folderId
-          })));
+          }));
+          batchUpdateBookmarks(updatedBms, 'AI Auto-Sorted bookmarks');
           alert('AI Auto-Sort complete! Bookmarks organized securely based on folder semantic definitions.');
         } else {
           // Perform local best-effort matching if API key missing or returns empty
@@ -81,7 +82,7 @@ export function CategoriesView() {
       return b;
     });
 
-    setBookmarks(updated);
+    batchUpdateBookmarks(updated, 'Local Auto-Sorted bookmarks');
     alert(`Local Match Complete! Automatically matched ${matchCount} bookmarks based on title and folder context metadata.`);
   };
 

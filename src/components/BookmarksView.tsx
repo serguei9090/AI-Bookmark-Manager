@@ -4,7 +4,7 @@ import { useAppContext } from '../store';
 import { Bookmark } from '../types';
 
 export function BookmarksView() {
-  const { bookmarks, folders, updateBookmark, deleteBookmark, setBookmarks, settings } = useAppContext();
+  const { bookmarks, folders, updateBookmark, deleteBookmark, addBookmark, settings } = useAppContext();
   const [search, setSearch] = useState('');
   const [selectedFolderFilter, setSelectedFolderFilter] = useState<string>('all');
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
@@ -67,7 +67,7 @@ export function BookmarksView() {
       dateAdded: Date.now()
     };
 
-    setBookmarks(prev => [newBookmark, ...prev]);
+    addBookmark(newBookmark);
     setIsAdding(false);
     setNewTitle('');
     setNewUrl('');

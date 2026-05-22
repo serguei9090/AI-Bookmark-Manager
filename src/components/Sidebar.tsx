@@ -1,5 +1,5 @@
 import React from 'react';
-import { BookmarkIcon, FolderTree, Settings, Copy, Bot } from 'lucide-react';
+import { BookmarkIcon, FolderTree, Settings, Copy, Bot, History } from 'lucide-react';
 import { useAppContext } from '../store';
 
 type SidebarProps = {
@@ -11,6 +11,7 @@ const tabs = [
   { id: 'bookmarks', label: 'Bookmarks', icon: BookmarkIcon },
   { id: 'categories', label: 'Categories', icon: FolderTree },
   { id: 'duplicates', label: 'Duplicates', icon: Copy },
+  { id: 'history', label: 'History', icon: History },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

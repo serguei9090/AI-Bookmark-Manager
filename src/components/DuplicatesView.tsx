@@ -3,7 +3,7 @@ import { CopyX, Trash, Check, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useAppContext } from '../store';
 
 export function DuplicatesView() {
-  const { bookmarks, setBookmarks } = useAppContext();
+  const { bookmarks, deleteBookmark, bulkDeleteBookmarks } = useAppContext();
 
   // Find exact duplicate URLs
   const duplicateGroups = useMemo(() => {
@@ -27,7 +27,7 @@ export function DuplicatesView() {
 
   const handleDelete = (id: string) => {
     if (confirm("Are you sure you want to remove this duplicate bookmark reference?")) {
-      setBookmarks(prev => prev.filter(b => b.id !== id));
+      deleteBookmark(id);
     }
   };
 
@@ -44,7 +44,7 @@ export function DuplicatesView() {
     if (toRemoveIds.length === 0) return;
 
     if (confirm(`This will automatically remove ${toRemoveIds.length} duplicate references, keeping only the original bookmark for each site. Proceed?`)) {
-      setBookmarks(prev => prev.filter(b => !toRemoveIds.includes(b.id)));
+      bulkDeleteBookmarks(toRemoveIds, `Removed ${toRemoveIds.length} duplicate bookmarks`);
       alert(`Cleaned successfully! Removed ${toRemoveIds.length} redundant duplicate bookmarks.`);
     }
   };

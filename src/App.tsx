@@ -4,6 +4,7 @@ import { BookmarksView } from './components/BookmarksView';
 import { CategoriesView } from './components/CategoriesView';
 import { DuplicatesView } from './components/DuplicatesView';
 import { SettingsView } from './components/SettingsView';
+import { HistoryView } from './components/HistoryView';
 import { AppProvider, useAppContext } from './store';
 import { Bookmark, Folder } from './types';
 import { Monitor, Layers, ShieldCheck, Cpu, RefreshCw, Sparkles, FolderPlus, Compass, ArrowLeft, ArrowRight, Home, PlusSquare } from 'lucide-react';
@@ -37,7 +38,7 @@ const PRESETS: Record<string, { bms: Bookmark[], fols: Folder[] }> = {
 };
 
 function AppLayout() {
-  const { bookmarks, settings, setSettings, setBookmarks, setFolders } = useAppContext();
+  const { bookmarks, settings, setSettings, injectPresetData, clearDatabase } = useAppContext();
   const [activeTab, setActiveTab] = useState('bookmarks');
   const [chromePopupOpen, setChromePopupOpen] = useState(true);
 
@@ -45,16 +46,14 @@ function AppLayout() {
   const injectPreset = (key: string) => {
     const data = PRESETS[key];
     if (data) {
-      setBookmarks(data.bms);
-      setFolders(data.fols);
+      injectPresetData(key === 'software' ? 'Dev Resources' : 'Creative News', data.bms, data.fols);
       alert(`Injected ${data.bms.length} bookmarks and ${data.fols.length} folder structures! Go to Categories or Bookmarks view to test semantic analysis.`);
     }
   };
 
   const clearAllBookmarks = () => {
     if (confirm("Are you sure you want to clear your current selection database?")) {
-      setBookmarks([]);
-      setFolders([]);
+      clearDatabase();
     }
   };
 
@@ -149,6 +148,7 @@ function AppLayout() {
               {activeTab === 'bookmarks' && <BookmarksView />}
               {activeTab === 'categories' && <CategoriesView />}
               {activeTab === 'duplicates' && <DuplicatesView />}
+              {activeTab === 'history' && <HistoryView />}
               {activeTab === 'settings' && <SettingsView />}
             </main>
           </div>
@@ -283,13 +283,19 @@ function AppLayout() {
                         onClick={() => setActiveTab('categories')}
                         className={`flex-1 py-2 border-b-2 transition-colors ${activeTab === 'categories' ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-900' : 'border-transparent hover:text-gray-800 dark:hover:text-gray-100'}`}
                       >
-                        Folders Tree
+                        Folders
                       </button>
                       <button 
                         onClick={() => setActiveTab('duplicates')}
                         className={`flex-1 py-2 border-b-2 transition-colors ${activeTab === 'duplicates' ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-900' : 'border-transparent hover:text-gray-800 dark:hover:text-gray-100'}`}
                       >
-                        Duplicates
+                        Dupes
+                      </button>
+                      <button 
+                        onClick={() => setActiveTab('history')}
+                        className={`flex-1 py-2 border-b-2 transition-colors ${activeTab === 'history' ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-900' : 'border-transparent hover:text-gray-800 dark:hover:text-gray-100'}`}
+                      >
+                        History
                       </button>
                       <button 
                         onClick={() => setActiveTab('settings')}
@@ -304,6 +310,7 @@ function AppLayout() {
                       {activeTab === 'bookmarks' && <BookmarksView />}
                       {activeTab === 'categories' && <CategoriesView />}
                       {activeTab === 'duplicates' && <DuplicatesView />}
+                      {activeTab === 'history' && <HistoryView />}
                       {activeTab === 'settings' && <SettingsView />}
                     </div>
                   </div>
