@@ -1,0 +1,37 @@
+export type Bookmark = {
+  id: string;
+  title: string;
+  url: string;
+  folderId: string | null;
+  tags: string[];
+  summary: string;
+  dateAdded: number;
+  favicon?: string;
+};
+
+export type Folder = {
+  id: string;
+  parentId: string | null;  // supports subfolders nesting nested trees
+  name: string;
+  promptContext: string;
+};
+
+export type AIProvider = 'openai' | 'gemini' | 'ollama' | 'lmstudio' | 'custom';
+
+export type Settings = {
+  provider: AIProvider;
+  model: string;
+  customUrl: string;
+  apiKey: string;
+  systemPrompt: string;
+  darkMode: boolean;
+  temperature: number;
+  maxTokens: number;
+  viewMode: 'extension' | 'dashboard'; // simulation layout matching user requested chrome extension concept
+};
+
+export type Proposal = {
+  name: string;
+  promptContext: string;
+};
+
