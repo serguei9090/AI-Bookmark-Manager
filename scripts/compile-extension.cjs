@@ -21,7 +21,7 @@ try {
     version: "1.0.0",
     description: "An AI-powered bookmark manager with categorization, summary generation, dark mode, and duplicate detection.",
     action: {
-      "default_popup": "index.html"
+      "default_popup": "index.html?popup=true"
     },
     permissions: [
       "storage",

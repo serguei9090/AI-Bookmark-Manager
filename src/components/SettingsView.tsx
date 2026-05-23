@@ -118,31 +118,80 @@ export function SettingsView() {
           </div>
         )}
 
-        {settings.provider === 'custom' && (
+        {/* Dynamic Provider URL and API Key Inputs */}
+        <div className="space-y-4 pt-2 border-t border-gray-100 dark:border-gray-750">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Custom Endpoint Base URL</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              {settings.provider === 'gemini' ? 'Google Gemini' :
+               settings.provider === 'openai' ? 'OpenAI' :
+               settings.provider === 'ollama' ? 'Ollama' :
+               settings.provider === 'lmstudio' ? 'LMStudio' : 'Custom'} Endpoint URL
+            </label>
+            <span className="block text-xs text-gray-500 dark:text-gray-400 mb-2">
+              Currently using: <code className="font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/25 px-1 py-0.5 rounded">{settings.provider === 'gemini' ? (settings.geminiUrl || 'https://generativelanguage.googleapis.com') :
+                               settings.provider === 'openai' ? (settings.openaiUrl || 'https://api.openai.com/v1') :
+                               settings.provider === 'ollama' ? (settings.ollamaUrl || 'http://localhost:11434') :
+                               settings.provider === 'lmstudio' ? (settings.lmstudioUrl || 'http://localhost:1234/v1') :
+                               (settings.customUrl || 'http://localhost:8080/v1')}</code>
+            </span>
             <input 
               type="text"
-              placeholder="e.g. http://localhost:1234/v1"
-              value={settings.customUrl}
-              onChange={e => setSettings({ ...settings, customUrl: e.target.value })}
-              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white font-mono"
+              placeholder={
+                settings.provider === 'gemini' ? 'https://generativelanguage.googleapis.com' :
+                settings.provider === 'openai' ? 'https://api.openai.com/v1' :
+                settings.provider === 'ollama' ? 'http://localhost:11434' :
+                settings.provider === 'lmstudio' ? 'http://localhost:1234/v1' :
+                'http://localhost:8080/v1'
+              }
+              value={
+                settings.provider === 'gemini' ? (settings.geminiUrl || '') :
+                settings.provider === 'openai' ? (settings.openaiUrl || '') :
+                settings.provider === 'ollama' ? (settings.ollamaUrl || '') :
+                settings.provider === 'lmstudio' ? (settings.lmstudioUrl || '') :
+                (settings.customUrl || '')
+              }
+              onChange={e => {
+                const val = e.target.value;
+                if (settings.provider === 'gemini') setSettings({ ...settings, geminiUrl: val });
+                else if (settings.provider === 'openai') setSettings({ ...settings, openaiUrl: val });
+                else if (settings.provider === 'ollama') setSettings({ ...settings, ollamaUrl: val });
+                else if (settings.provider === 'lmstudio') setSettings({ ...settings, lmstudioUrl: val });
+                else setSettings({ ...settings, customUrl: val });
+              }}
+              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white font-mono text-sm"
             />
           </div>
-        )}
 
-        {(settings.provider === 'openai' || settings.provider === 'custom') && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Secret Authentication API Key</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              API Key / Secret Token
+            </label>
             <input 
               type="password"
-              placeholder="Paste secret token..."
-              value={settings.apiKey}
-              onChange={e => setSettings({ ...settings, apiKey: e.target.value })}
-              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white font-mono"
+              placeholder={
+                settings.provider === 'gemini' ? 'Optional (if blank, falls back to local server /api/ai proxy)' :
+                settings.provider === 'ollama' || settings.provider === 'lmstudio' ? 'Optional for local servers' :
+                'Paste your API key/token here...'
+              }
+              value={
+                settings.provider === 'gemini' ? (settings.geminiApiKey || '') :
+                settings.provider === 'openai' ? (settings.openaiApiKey || '') :
+                settings.provider === 'ollama' ? (settings.ollamaApiKey || '') :
+                settings.provider === 'lmstudio' ? (settings.lmstudioApiKey || '') :
+                (settings.customApiKey || '')
+              }
+              onChange={e => {
+                const val = e.target.value;
+                if (settings.provider === 'gemini') setSettings({ ...settings, geminiApiKey: val });
+                else if (settings.provider === 'openai') setSettings({ ...settings, openaiApiKey: val });
+                else if (settings.provider === 'ollama') setSettings({ ...settings, ollamaApiKey: val });
+                else if (settings.provider === 'lmstudio') setSettings({ ...settings, lmstudioApiKey: val });
+                else setSettings({ ...settings, customApiKey: val });
+              }}
+              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white font-mono text-sm"
             />
           </div>
-        )}
+        </div>
       </div>
 
       {/* SECTION 2: System Instructions & Generation Parameters */}
@@ -212,6 +261,30 @@ export function SettingsView() {
               <span>128 tokens</span>
               <span>4096 tokens</span>
             </div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 dark:border-gray-700/60 pt-4 mt-2">
+          <div className="flex justify-between items-center mb-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Database History Log Limit (Max Undo Snapshots)
+            </label>
+            <span className="text-xs font-mono font-semibold bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-md">
+              {settings.maxHistoryEntries !== undefined ? settings.maxHistoryEntries : 10}
+            </span>
+          </div>
+          <input 
+            type="range"
+            min="5"
+            max="50"
+            step="1"
+            value={settings.maxHistoryEntries !== undefined ? settings.maxHistoryEntries : 10}
+            onChange={e => setSettings({ ...settings, maxHistoryEntries: parseInt(e.target.value, 10) })}
+            className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+          />
+          <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+            <span>5 entries</span>
+            <span>50 entries (default 10)</span>
           </div>
         </div>
       </div>

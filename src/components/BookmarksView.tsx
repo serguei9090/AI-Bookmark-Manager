@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Search, Sparkles, Tag, Folder as FolderIcon, Trash, Globe, MapPin, CheckCircle, HelpCircle, ExternalLink, PlusSquare, AlertCircle } from 'lucide-react';
 import { useAppContext } from '../store';
 import { Bookmark } from '../types';
+import { summarizeBookmark } from '../services/aiService';
 
 export function BookmarksView() {
   const { bookmarks, folders, updateBookmark, deleteBookmark, addBookmark, settings } = useAppContext();
@@ -75,42 +76,20 @@ export function BookmarksView() {
     setNewTagsString('');
   };
 
-  // Run AI summaries through express backend proxying GoogleGen AI SDK
+  // Run AI summaries using the central AI service
   const handleAISummarize = async (bookmark: Bookmark) => {
     setSummarizingId(bookmark.id);
     try {
-      if (settings.provider === 'gemini') {
-        const res = await fetch('/api/ai/summarize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookmark })
-        });
-        const data = await res.json();
-        if (data.success) {
-          updateBookmark(bookmark.id, { 
-            summary: data.summary || 'Summary generated successfully.', 
-            tags: Array.isArray(data.tags) && data.tags.length ? data.tags : [...bookmark.tags, 'ai-generated']
-          });
-        } else {
-          alert('Configuration note: Could not contact Google Gemini. Make sure GEMINI_API_KEY is configured under Settings > Secrets. Proceeding with instant automated synthesis.');
-          // Auto synthesized backup
-          updateBookmark(bookmark.id, {
-            summary: `Automated summary synthesized for ${bookmark.title}. Relevant engineering resource.`,
-            tags: [...bookmark.tags, 'auto-categorized']
-          });
-        }
-      } else {
-        // Mock non generic provider
-        updateBookmark(bookmark.id, {
-          summary: `Mock summary for ${bookmark.title} generated instantly by active fallback ${settings.provider} model: ${settings.model}.`,
-          tags: [...bookmark.tags, 'artificial']
-        });
-      }
-    } catch (e) {
+      const data = await summarizeBookmark(bookmark, settings);
+      updateBookmark(bookmark.id, { 
+        summary: data.summary || 'Summary generated successfully.', 
+        tags: Array.isArray(data.tags) && data.tags.length ? data.tags : [...bookmark.tags, 'ai-generated']
+      });
+    } catch (e: any) {
       console.error(e);
       // Failover to client simulation
       updateBookmark(bookmark.id, {
-        summary: `Failsafe Summary for ${bookmark.title}: Expert documentation and reference resource for programmers.`,
+        summary: `Failsafe Summary for ${bookmark.title}: Expert documentation and reference resource for programmers. (Error: ${e.message || 'connection failed'})`,
         tags: [...bookmark.tags, 'failsafe', 'ai']
       });
     } finally {
@@ -365,7 +344,11 @@ export function BookmarksView() {
                       {summarizingId === bm.id ? 'Processing...' : 'Summarize'}
                     </button>
                     <button 
-                      onClick={() => deleteBookmark(bm.id)}
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to delete the bookmark "${bm.title}"?`)) {
+                          deleteBookmark(bm.id);
+                        }
+                      }}
                       className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 dark:hover:bg-red-900/20 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
                       title="Delete bookmark"
                     >

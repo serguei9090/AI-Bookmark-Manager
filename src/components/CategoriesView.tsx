@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { FolderTree, Sparkles, Plus, Edit2, Trash, HelpCircle, Save, XCircle, Check, ArrowRight, CornerDownRight, FileText } from 'lucide-react';
 import { useAppContext } from '../store';
 import { Folder } from '../types';
+import { autoSortBookmarks, proposeCategories } from '../services/aiService';
 
 export function CategoriesView() {
   const { bookmarks, folders, batchUpdateBookmarks, addFolder, deleteFolder, updateFolder, settings } = useAppContext();
@@ -17,34 +18,42 @@ export function CategoriesView() {
   const [newParentId, setNewParentId] = useState<string>('root');
   const [newPromptContext, setNewPromptContext] = useState('');
 
+  // For inline folder creation
+  const [addingUnderFolderId, setAddingUnderFolderId] = useState<string | null>(null);
+  const [inlineFolderName, setInlineFolderName] = useState('');
+  const [inlinePromptContext, setInlinePromptContext] = useState('');
+
+  const handleInlineCreateFolder = (parentId: string | null) => {
+    if (!inlineFolderName.trim()) return;
+    addFolder({
+      id: crypto.randomUUID(),
+      parentId,
+      name: inlineFolderName.trim(),
+      promptContext: inlinePromptContext.trim()
+    });
+    setAddingUnderFolderId(null);
+    setInlineFolderName('');
+    setInlinePromptContext('');
+  };
+
   // Editing folder state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editParentId, setEditParentId] = useState<string>('root');
   const [editPromptContext, setEditPromptContext] = useState('');
 
-  // Auto classify bookmark categories using Gemini
+  // Auto classify bookmark categories using AI service
   const handleAutoSort = async () => {
     setIsSorting(true);
     try {
-      if (settings.provider === 'gemini') {
-        const res = await fetch('/api/ai/auto-sort', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookmarks, folders, systemPrompt: settings.systemPrompt })
-        });
-        const data = await res.json();
-        if (data.success && data.mapping) {
-          const updatedBms = bookmarks.map(b => ({
-            ...b,
-            folderId: data.mapping[b.id] !== undefined ? data.mapping[b.id] : b.folderId
-          }));
-          batchUpdateBookmarks(updatedBms, 'AI Auto-Sorted bookmarks');
-          alert('AI Auto-Sort complete! Bookmarks organized securely based on folder semantic definitions.');
-        } else {
-          // Perform local best-effort matching if API key missing or returns empty
-          fallbackAutoSort();
-        }
+      const mapping = await autoSortBookmarks(bookmarks, folders, settings);
+      if (mapping && Object.keys(mapping).length > 0) {
+        const updatedBms = bookmarks.map(b => ({
+          ...b,
+          folderId: mapping[b.id] !== undefined ? mapping[b.id] : b.folderId
+        }));
+        batchUpdateBookmarks(updatedBms, 'AI Auto-Sorted bookmarks');
+        alert('AI Auto-Sort complete! Bookmarks organized securely based on folder semantic definitions.');
       } else {
         fallbackAutoSort();
       }
@@ -86,22 +95,13 @@ export function CategoriesView() {
     alert(`Local Match Complete! Automatically matched ${matchCount} bookmarks based on title and folder context metadata.`);
   };
 
-  // Generate category proposals via Gemini
+  // Generate category proposals via AI service
   const handlePropose = async () => {
     setIsProposing(true);
     try {
-      if (settings.provider === 'gemini') {
-        const res = await fetch('/api/ai/propose-category', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bookmarks, systemPrompt: settings.systemPrompt })
-        });
-        const data = await res.json();
-        if (data.success && data.proposals) {
-          setProposals(data.proposals);
-        } else {
-          setProposals(getMockProposals());
-        }
+      const proposed = await proposeCategories(bookmarks, settings);
+      if (proposed && proposed.length > 0) {
+        setProposals(proposed);
       } else {
         setProposals(getMockProposals());
       }
@@ -166,6 +166,12 @@ export function CategoriesView() {
       promptContext: editPromptContext.trim()
     });
     setEditingId(null);
+  };
+
+  const handleDeleteFolder = (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete the category "${name}"? This will move its bookmarks and subfolders to the parent level.`)) {
+      deleteFolder(id);
+    }
   };
 
   // Build recursive tree visual
@@ -303,179 +309,198 @@ export function CategoriesView() {
         </div>
       )}
 
-      {/* TREE CONTENT SPLIT */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        
-        {/* CREATE DIRECTORY PANEL */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
+
+
+      {/* FULL-WIDTH HIERARCHY STRUCTURE */}
+      <div className="w-full bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col min-h-[400px]">
+        <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3 mb-4 flex-wrap gap-2">
           <h3 className="font-bold text-lg dark:text-white flex items-center gap-2">
-            <Plus size={20} className="text-blue-500" />
-            Add New Category
+            <FolderTree size={20} className="text-emerald-500" />
+            Hierarchy Structure
           </h3>
-          <form onSubmit={handleCreateFolderSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Folder Name</label>
-              <input 
-                type="text"
-                required
-                placeholder="e.g. Design Inspiration"
-                value={newFolderName}
-                onChange={e => setNewFolderName(e.target.value)}
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2 dark:text-white"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Parent Directory</label>
-              <select
-                value={newParentId}
-                onChange={e => setNewParentId(e.target.value)}
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 dark:text-white"
-              >
-                <option value="root">📁 Root Level (No Parent)</option>
-                {folders.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">AI Semantic Context Definition</label>
-              <textarea 
-                rows={3}
-                placeholder="Type descriptive prompt keywords specifying the type of references that belong here (e.g. typography, mockups, color palettes)..."
-                value={newPromptContext}
-                onChange={e => setNewPromptContext(e.target.value)}
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2 dark:text-white text-sm"
-              />
-            </div>
-
+          <div className="flex items-center gap-3">
             <button
-              type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-sm font-semibold transition-all shadow-sm active:scale-95"
+              type="button"
+              onClick={() => {
+                setAddingUnderFolderId('root');
+                setInlineFolderName('');
+                setInlinePromptContext('');
+              }}
+              className="text-xs bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-900/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 font-semibold cursor-pointer"
             >
-              Add Folder Node
+              <Plus size={14} />
+              <span>Add Root Category</span>
             </button>
-          </form>
-        </div>
-
-        {/* INTERACTIVE TREE REPRESENTATION */}
-        <div className="lg:col-span-2 bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col min-h-[400px]">
-          <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3 mb-4">
-            <h3 className="font-bold text-lg dark:text-white flex items-center gap-2">
-              <FolderTree size={20} className="text-emerald-500" />
-              Hierarchy Structure
-            </h3>
             <span className="text-[10px] bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded-md text-gray-500 font-mono">
               Count: {folders.length} Nodes
             </span>
           </div>
+        </div>
 
-          <div className="flex-1 overflow-y-auto space-y-4">
-            {folders.length === 0 ? (
-              <div className="text-center py-20 text-gray-400 italic">
-                No folders custom-defined. Select "AI Propose Layout" to bootstrap quickly!
+        <div className="flex-1 overflow-y-auto space-y-4">
+          {/* Inline root creation */}
+          {addingUnderFolderId === 'root' && (
+            <div className="border border-dashed border-blue-200 dark:border-blue-900/40 p-4 rounded-xl bg-blue-50/10 max-w-lg space-y-2.5 animate-fade-in mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-450 block">Create New Root Category</span>
+              <input 
+                type="text" 
+                placeholder="Category name (e.g. Design Inspiration)..."
+                value={inlineFolderName}
+                onChange={e => setInlineFolderName(e.target.value)}
+                className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-xs dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleInlineCreateFolder(null);
+                  if (e.key === 'Escape') setAddingUnderFolderId(null);
+                }}
+                autoFocus
+              />
+              <input 
+                type="text" 
+                placeholder="AI Context prompt keywords (optional)..."
+                value={inlinePromptContext}
+                onChange={e => setInlinePromptContext(e.target.value)}
+                className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') handleInlineCreateFolder(null);
+                  if (e.key === 'Escape') setAddingUnderFolderId(null);
+                }}
+              />
+              <div className="flex justify-end gap-2 pt-1">
+                <button 
+                  type="button"
+                  onClick={() => setAddingUnderFolderId(null)} 
+                  className="text-xs text-gray-400 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => handleInlineCreateFolder(null)}
+                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer shadow"
+                >
+                  <Check size={12} />
+                  <span>Create Category</span>
+                </button>
               </div>
-            ) : (
-              rootFolders.map(root => {
-                const subs = subFoldersMap.get(root.id) || [];
-                return (
-                  <div key={root.id} className="border border-gray-100 dark:border-gray-700/50 p-4 rounded-xl hover:border-gray-200 dark:hover:border-gray-700 transition-colors">
-                    
-                    {/* ROOT LEVEL CARD */}
-                    {editingId === root.id ? (
-                      <div className="space-y-3 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-yellow-200">
-                        <input 
-                          type="text" 
-                          value={editName}
-                          onChange={e => setEditName(e.target.value)}
-                          className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 dark:text-white font-bold"
-                        />
-                        <select
-                          value={editParentId}
-                          onChange={e => setEditParentId(e.target.value)}
-                          className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 dark:text-white text-xs"
-                        >
-                          <option value="root">📁 Root Level</option>
-                          {folders.filter(f => f.id !== root.id).map(f => (
-                            <option key={f.id} value={f.id}>{f.name}</option>
-                          ))}
-                        </select>
-                        <textarea 
-                          rows={2}
-                          value={editPromptContext}
-                          onChange={e => setEditPromptContext(e.target.value)}
-                          className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-xs dark:text-white"
-                        />
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => setEditingId(null)} className="text-xs text-gray-400">Cancel</button>
-                          <button onClick={saveEdit} className="text-xs bg-green-600 text-white px-3 py-1 rounded">Save</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-start justify-between group">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-gray-900 dark:text-white text-base">{root.name}</span>
-                            <span className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-2 py-0.5 rounded font-semibold font-mono">
-                              {getBookmarksCount(root.id)} Items
-                            </span>
-                          </div>
-                          {root.promptContext && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 font-sans italic max-w-lg leading-relaxed pl-1">
-                              Context: {root.promptContext}
-                            </p>
-                          )}
-                        </div>
-                        
-                        <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => startEdit(root)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-750 rounded text-gray-400 hover:text-blue-500">
-                            <Edit2 size={13} />
-                          </button>
-                          <button onClick={() => deleteFolder(root.id)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-750 rounded text-gray-400 hover:text-red-500">
-                            <Trash size={13} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
+            </div>
+          )}
 
-                    {/* SUB LEVEL FOLDERS */}
-                    {subs.length > 0 && (
-                      <div className="mt-4 pl-4 border-l-2 border-dashed border-gray-200 dark:border-gray-800 space-y-3">
-                        {subs.map(sub => (
-                          <div key={sub.id} className="flex items-start gap-2 group/sub">
-                            <CornerDownRight size={14} className="text-gray-400 mt-1" />
-                            <div className="flex-1">
-                              {editingId === sub.id ? (
-                                <div className="space-y-3 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-yellow-300">
-                                  <input 
-                                    type="text" 
-                                    value={editName}
-                                    onChange={e => setEditName(e.target.value)}
-                                    className="w-full bg-white dark:bg-gray-800 border border-gray-300 rounded px-2 py-1 dark:text-white font-bold"
-                                  />
-                                  <select
-                                    value={editParentId}
-                                    onChange={e => setEditParentId(e.target.value)}
-                                    className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs"
-                                  >
-                                    <option value="root">📁 Root Level</option>
-                                    {folders.filter(f => f.id !== sub.id).map(f => (
-                                      <option key={f.id} value={f.id}>{f.name}</option>
-                                    ))}
-                                  </select>
-                                  <textarea 
-                                    rows={2}
-                                    value={editPromptContext}
-                                    onChange={e => setEditPromptContext(e.target.value)}
-                                    className="w-full bg-white border border-gray-300 rounded px-2 py-1 text-xs"
-                                  />
-                                  <div className="flex justify-end gap-2">
-                                    <button onClick={() => setEditingId(null)} className="text-xs text-gray-400">Cancel</button>
-                                    <button onClick={saveEdit} className="text-xs bg-green-600 text-white px-3 py-1 rounded">Save</button>
-                                  </div>
+          {folders.length === 0 && addingUnderFolderId !== 'root' ? (
+            <div className="text-center py-20 text-gray-400 italic">
+              No folders custom-defined. Select "AI Propose Layout" to bootstrap quickly!
+            </div>
+          ) : (
+            rootFolders.map(root => {
+              const subs = subFoldersMap.get(root.id) || [];
+              return (
+                <div key={root.id} className="border border-gray-100 dark:border-gray-700/50 p-4 rounded-xl hover:border-gray-200 dark:hover:border-gray-700 transition-colors">
+                  
+                  {/* ROOT LEVEL CARD */}
+                  {editingId === root.id ? (
+                    <div className="space-y-3 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-yellow-200">
+                      <input 
+                        type="text" 
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 dark:text-white font-bold"
+                      />
+                      <select
+                        value={editParentId}
+                        onChange={e => setEditParentId(e.target.value)}
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 dark:text-white text-xs"
+                      >
+                        <option value="root">📁 Root Level</option>
+                        {folders.filter(f => f.id !== root.id).map(f => (
+                          <option key={f.id} value={f.id}>{f.name}</option>
+                        ))}
+                      </select>
+                      <textarea 
+                        rows={2}
+                        value={editPromptContext}
+                        onChange={e => setEditPromptContext(e.target.value)}
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-xs dark:text-white"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => setEditingId(null)} className="text-xs text-gray-400">Cancel</button>
+                        <button onClick={saveEdit} className="text-xs bg-green-600 text-white px-3 py-1 rounded">Save</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between group">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-gray-900 dark:text-white text-base">{root.name}</span>
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-2 py-0.5 rounded font-semibold font-mono">
+                            {getBookmarksCount(root.id)} Items
+                          </span>
+                        </div>
+                        {root.promptContext && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 font-sans italic max-w-lg leading-relaxed pl-1">
+                            Context: {root.promptContext}
+                          </p>
+                        )}
+                      </div>
+                      
+                      <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button 
+                          onClick={() => {
+                            setAddingUnderFolderId(root.id);
+                            setInlineFolderName('');
+                            setInlinePromptContext('');
+                          }}
+                          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-750 rounded text-gray-400 hover:text-emerald-500 cursor-pointer"
+                          title="Add subcategory"
+                        >
+                          <Plus size={13} />
+                        </button>
+                        <button onClick={() => startEdit(root)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-750 rounded text-gray-400 hover:text-blue-500 cursor-pointer">
+                          <Edit2 size={13} />
+                        </button>
+                        <button onClick={() => handleDeleteFolder(root.id, root.name)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-750 rounded text-gray-400 hover:text-red-500 cursor-pointer">
+                          <Trash size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* SUB LEVEL FOLDERS */}
+                  {(subs.length > 0 || addingUnderFolderId === root.id) && (
+                    <div className="mt-4 pl-4 border-l-2 border-dashed border-gray-200 dark:border-gray-800 space-y-3">
+                      {subs.map(sub => (
+                        <div key={sub.id} className="flex items-start gap-2 group/sub">
+                          <CornerDownRight size={14} className="text-gray-400 mt-1" />
+                          <div className="flex-1">
+                            {editingId === sub.id ? (
+                              <div className="space-y-3 bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border border-yellow-300">
+                                <input 
+                                  type="text" 
+                                  value={editName}
+                                  onChange={e => setEditName(e.target.value)}
+                                  className="w-full bg-white dark:bg-gray-800 border border-gray-350 rounded px-2 py-1 dark:text-white font-bold"
+                                />
+                                <select
+                                  value={editParentId}
+                                  onChange={e => setEditParentId(e.target.value)}
+                                  className="w-full bg-white border border-gray-350 rounded px-2 py-1 text-xs"
+                                >
+                                  <option value="root">📁 Root Level</option>
+                                  {folders.filter(f => f.id !== sub.id).map(f => (
+                                    <option key={f.id} value={f.id}>{f.name}</option>
+                                  ))}
+                                </select>
+                                <textarea 
+                                  rows={2}
+                                  value={editPromptContext}
+                                  onChange={e => setEditPromptContext(e.target.value)}
+                                  className="w-full bg-white border border-gray-350 rounded px-2 py-1 text-xs"
+                                />
+                                <div className="flex justify-end gap-2">
+                                  <button onClick={() => setEditingId(null)} className="text-xs text-gray-400">Cancel</button>
+                                  <button onClick={saveEdit} className="text-xs bg-green-600 text-white px-3 py-1 rounded">Save</button>
                                 </div>
-                              ) : (
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
                                 <div className="flex items-start justify-between">
                                   <div className="space-y-0.5">
                                     <div className="flex items-center gap-1.5">
@@ -492,28 +517,138 @@ export function CategoriesView() {
                                   </div>
 
                                   <div className="flex gap-1 opacity-0 group-hover/sub:opacity-100 transition-opacity">
-                                    <button onClick={() => startEdit(sub)} className="p-1 rounded text-gray-400 hover:text-blue-500">
+                                    <button 
+                                      onClick={() => {
+                                        setAddingUnderFolderId(sub.id);
+                                        setInlineFolderName('');
+                                        setInlinePromptContext('');
+                                      }}
+                                      className="p-1 rounded text-gray-400 hover:text-emerald-500 hover:bg-gray-100 dark:hover:bg-gray-750 cursor-pointer"
+                                      title="Add subcategory"
+                                    >
+                                      <Plus size={12} />
+                                    </button>
+                                    <button onClick={() => startEdit(sub)} className="p-1 rounded text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-750 cursor-pointer">
                                       <Edit2 size={12} />
                                     </button>
-                                    <button onClick={() => deleteFolder(sub.id)} className="p-1 rounded text-gray-400 hover:text-red-500">
+                                    <button onClick={() => handleDeleteFolder(sub.id, sub.name)} className="p-1 rounded text-gray-400 hover:text-red-500 hover:bg-gray-100 dark:hover:bg-gray-750 cursor-pointer">
                                       <Trash size={12} />
                                     </button>
                                   </div>
                                 </div>
-                              )}
+
+                                {/* Nested subfolder creation inline */}
+                                {addingUnderFolderId === sub.id && (
+                                  <div className="flex items-start gap-2 animate-fade-in pl-4">
+                                    <CornerDownRight size={12} className="text-gray-400 mt-1" />
+                                    <div className="flex-1 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-dashed border-gray-200 dark:border-gray-750 max-w-md space-y-2">
+                                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">New Subcategory under {sub.name}</span>
+                                      <input 
+                                        type="text" 
+                                        placeholder="Category name..."
+                                        value={inlineFolderName}
+                                        onChange={e => setInlineFolderName(e.target.value)}
+                                        className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-xs dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') handleInlineCreateFolder(sub.id);
+                                          if (e.key === 'Escape') setAddingUnderFolderId(null);
+                                        }}
+                                        autoFocus
+                                      />
+                                      <input 
+                                        type="text" 
+                                        placeholder="AI Context prompt keywords (optional)..."
+                                        value={inlinePromptContext}
+                                        onChange={e => setInlinePromptContext(e.target.value)}
+                                        className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-[10px] dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+                                        onKeyDown={e => {
+                                          if (e.key === 'Enter') handleInlineCreateFolder(sub.id);
+                                          if (e.key === 'Escape') setAddingUnderFolderId(null);
+                                        }}
+                                      />
+                                      <div className="flex justify-end gap-1.5 mt-1">
+                                        <button 
+                                          type="button"
+                                          onClick={() => setAddingUnderFolderId(null)} 
+                                          className="text-[9px] text-gray-450 hover:text-gray-600 font-semibold px-2 py-0.5 rounded hover:bg-gray-100 cursor-pointer"
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button 
+                                          type="button"
+                                          onClick={() => handleInlineCreateFolder(sub.id)}
+                                          className="text-[9px] bg-blue-600 hover:bg-blue-700 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 cursor-pointer"
+                                        >
+                                          <Check size={9} />
+                                          <span>Create</span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Inline form directly under root subfolders */}
+                      {addingUnderFolderId === root.id && (
+                        <div className="flex items-start gap-2 animate-fade-in pl-4">
+                          <CornerDownRight size={14} className="text-gray-400 mt-1" />
+                          <div className="flex-1 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-dashed border-gray-200 dark:border-gray-700 max-w-md space-y-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">New Subcategory under {root.name}</span>
+                            <input 
+                              type="text" 
+                              placeholder="Category name..."
+                              value={inlineFolderName}
+                              onChange={e => setInlineFolderName(e.target.value)}
+                              className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2.5 py-1.5 text-xs dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleInlineCreateFolder(root.id);
+                                if (e.key === 'Escape') setAddingUnderFolderId(null);
+                              }}
+                              autoFocus
+                            />
+                            <input 
+                              type="text" 
+                              placeholder="AI Context prompt keywords (optional)..."
+                              value={inlinePromptContext}
+                              onChange={e => setInlinePromptContext(e.target.value)}
+                              className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2.5 py-1.5 text-[11px] dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleInlineCreateFolder(root.id);
+                                if (e.key === 'Escape') setAddingUnderFolderId(null);
+                              }}
+                            />
+                            <div className="flex justify-end gap-2 mt-1">
+                              <button 
+                                type="button"
+                                onClick={() => setAddingUnderFolderId(null)} 
+                                className="text-[10px] text-gray-405 hover:text-gray-500 font-semibold px-2.5 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button 
+                                type="button"
+                                onClick={() => handleInlineCreateFolder(root.id)}
+                                className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-semibold px-3 py-1 rounded-lg flex items-center gap-1 cursor-pointer"
+                              >
+                                <Check size={10} />
+                                <span>Create</span>
+                              </button>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                  </div>
-                );
-              })
-            )}
-          </div>
+                </div>
+              );
+            })
+          )}
         </div>
-
       </div>
     </div>
   );

@@ -1,19 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Bookmark, Folder, Settings, Proposal, HistoryEntry } from './types';
 
-// Mock Initial Data
-const initialBookmarks: Bookmark[] = [
-  { id: '1', title: 'GitHub - google/genai', url: 'https://github.com/google/genai', folderId: null, tags: [], summary: '', dateAdded: Date.now() },
-  { id: '2', title: 'React Documentation', url: 'https://react.dev', folderId: null, tags: [], summary: '', dateAdded: Date.now() - 1000 },
-  { id: '3', title: 'Tailwind CSS', url: 'https://tailwindcss.com', folderId: 'f1', tags: ['css'], summary: 'Styling framework', dateAdded: Date.now() - 2000 },
-  { id: '4', title: 'MDN Web Docs', url: 'https://developer.mozilla.org', folderId: null, tags: [], summary: '', dateAdded: Date.now() - 3000 },
-  { id: '5', title: 'Stack Overflow', url: 'https://stackoverflow.com', folderId: null, tags: [], summary: '', dateAdded: Date.now() - 4000 },
-  { id: '6', title: 'Stack Overflow (Dupe)', url: 'https://stackoverflow.com', folderId: null, tags: [], summary: '', dateAdded: Date.now() - 5000 },
-];
+// Initial Data
+const initialBookmarks: Bookmark[] = [];
 
-const initialFolders: Folder[] = [
-  { id: 'f1', name: 'Web Dev', parentId: null, promptContext: 'Resources related to web development, CSS, HTML, JS.' },
-];
+const initialFolders: Folder[] = [];
 
 const initialSettings: Settings = {
   provider: 'gemini',
@@ -25,6 +16,45 @@ const initialSettings: Settings = {
   temperature: 0.7,
   maxTokens: 1024,
   viewMode: 'dashboard',
+  geminiUrl: '',
+  geminiApiKey: '',
+  openaiUrl: '',
+  openaiApiKey: '',
+  ollamaUrl: '',
+  ollamaApiKey: '',
+  lmstudioUrl: '',
+  lmstudioApiKey: '',
+  customApiKey: '',
+  maxHistoryEntries: 10,
+};
+
+// Check if running inside a Chrome Extension with Bookmarks API
+const isExtension = typeof chrome !== 'undefined' && chrome.bookmarks !== undefined;
+
+// Utility functions for storage persistence
+const getStorageItem = async (key: string): Promise<any> => {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get([key], (result) => {
+        resolve(result[key]);
+      });
+    });
+  } else {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : null;
+  }
+};
+
+const setStorageItem = async (key: string, value: any): Promise<void> => {
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [key]: value }, () => {
+        resolve();
+      });
+    });
+  } else {
+    localStorage.setItem(key, JSON.stringify(value));
+  }
 };
 
 type AppContextType = {
@@ -53,31 +83,183 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>(() => {
+    if (isExtension) {
+      return [];
+    }
     const saved = localStorage.getItem('bm_bookmarks');
     return saved ? JSON.parse(saved) : initialBookmarks;
   });
 
   const [folders, setFolders] = useState<Folder[]>(() => {
+    if (isExtension) {
+      return [];
+    }
     const saved = localStorage.getItem('bm_folders');
     return saved ? JSON.parse(saved) : initialFolders;
   });
 
   const [settings, setSettings] = useState<Settings>(() => {
     const saved = localStorage.getItem('bm_settings');
-    return saved ? JSON.parse(saved) : initialSettings;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return { ...initialSettings, ...parsed };
+      } catch (e) {
+        return initialSettings;
+      }
+    }
+    return initialSettings;
   });
+
+  const isReconcilingRef = React.useRef(false);
 
   const [history, setHistory] = useState<HistoryEntry[]>(() => {
     const saved = localStorage.getItem('bm_history');
     return saved ? JSON.parse(saved) : [];
   });
 
+  const initializeHistoryIfEmpty = (bms: Bookmark[], fols: Folder[]) => {
+    setHistory(prev => {
+      if (prev.length === 0) {
+        const entry: HistoryEntry = {
+          id: crypto.randomUUID(),
+          bookmarks: bms,
+          folders: fols,
+          timestamp: Date.now(),
+          description: "System initialized (Startup)"
+        };
+        return [entry];
+      }
+      return prev;
+    });
+  };
+
+  // Async data loader for extension / metadata merge
+  const loadData = async () => {
+    if (isExtension) {
+      try {
+        const bookmarksMeta = await getStorageItem('bm_metadata_bookmarks') || {};
+        const foldersMeta = await getStorageItem('bm_metadata_folders') || {};
+        
+        chrome.bookmarks.getTree((tree) => {
+          const foldersList: Folder[] = [];
+          const bookmarksList: Bookmark[] = [];
+          
+          const traverse = (node: chrome.bookmarks.BookmarkTreeNode) => {
+            const isRoot = node.id === '0' || !node.parentId;
+            if (!isRoot) {
+              const isFolder = !node.url;
+              const parentIdMapped = (node.parentId === '0' || !node.parentId) ? null : node.parentId;
+              
+              if (isFolder) {
+                const meta = foldersMeta[node.id] || {};
+                foldersList.push({
+                  id: node.id,
+                  parentId: parentIdMapped,
+                  name: node.title,
+                  promptContext: meta.promptContext || '',
+                });
+              } else {
+                const meta = bookmarksMeta[node.id] || {};
+                bookmarksList.push({
+                  id: node.id,
+                  title: node.title,
+                  url: node.url || '',
+                  folderId: parentIdMapped,
+                  tags: meta.tags || [],
+                  summary: meta.summary || '',
+                  dateAdded: node.dateAdded || Date.now(),
+                });
+              }
+            }
+            
+            if (node.children) {
+              for (const child of node.children) {
+                traverse(child);
+              }
+            }
+          };
+          
+          if (tree && tree.length > 0) {
+            traverse(tree[0]);
+          }
+          
+          setBookmarks(bookmarksList);
+          setFolders(foldersList);
+          initializeHistoryIfEmpty(bookmarksList, foldersList);
+        });
+      } catch (err) {
+        console.error("Error loading bookmarks from Chrome API", err);
+      }
+    } else {
+      // Sandbox fallback loading
+      const savedBookmarks = localStorage.getItem('bm_bookmarks');
+      const savedFolders = localStorage.getItem('bm_folders');
+      
+      let bookmarksList: Bookmark[] = savedBookmarks ? JSON.parse(savedBookmarks) : [];
+      let foldersList: Folder[] = savedFolders ? JSON.parse(savedFolders) : [];
+      
+      const bookmarksMeta = await getStorageItem('bm_metadata_bookmarks') || {};
+      const foldersMeta = await getStorageItem('bm_metadata_folders') || {};
+      
+      bookmarksList = bookmarksList.map(bm => {
+        const meta = bookmarksMeta[bm.id] || {};
+        return {
+          ...bm,
+          tags: meta.tags || bm.tags || [],
+          summary: meta.summary || bm.summary || '',
+        };
+      });
+      
+      foldersList = foldersList.map(fol => {
+        const meta = foldersMeta[fol.id] || {};
+        return {
+          ...fol,
+          promptContext: meta.promptContext || fol.promptContext || '',
+        };
+      });
+      
+      setBookmarks(bookmarksList);
+      setFolders(foldersList);
+      initializeHistoryIfEmpty(bookmarksList, foldersList);
+    }
+  };
+
+  // Sync event listeners for external Chrome Bookmark updates
   useEffect(() => {
-    localStorage.setItem('bm_bookmarks', JSON.stringify(bookmarks));
+    loadData();
+
+    if (isExtension) {
+      const handleCreated = () => { if (!isReconcilingRef.current) loadData(); };
+      const handleRemoved = () => { if (!isReconcilingRef.current) loadData(); };
+      const handleChanged = () => { if (!isReconcilingRef.current) loadData(); };
+      const handleMoved = () => { if (!isReconcilingRef.current) loadData(); };
+
+      chrome.bookmarks.onCreated.addListener(handleCreated);
+      chrome.bookmarks.onRemoved.addListener(handleRemoved);
+      chrome.bookmarks.onChanged.addListener(handleChanged);
+      chrome.bookmarks.onMoved.addListener(handleMoved);
+
+      return () => {
+        chrome.bookmarks.onCreated.removeListener(handleCreated);
+        chrome.bookmarks.onRemoved.removeListener(handleRemoved);
+        chrome.bookmarks.onChanged.removeListener(handleChanged);
+        chrome.bookmarks.onMoved.removeListener(handleMoved);
+      };
+    }
+  }, []);
+
+  // Save updates in sandbox mode to localStorage
+  useEffect(() => {
+    if (!isExtension) {
+      localStorage.setItem('bm_bookmarks', JSON.stringify(bookmarks));
+    }
   }, [bookmarks]);
 
   useEffect(() => {
-    localStorage.setItem('bm_folders', JSON.stringify(folders));
+    if (!isExtension) {
+      localStorage.setItem('bm_folders', JSON.stringify(folders));
+    }
   }, [folders]);
 
   useEffect(() => {
@@ -102,61 +284,453 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         timestamp: Date.now(),
         description
       };
-      return [entry, ...prev].slice(0, 10);
+      return [entry, ...prev].slice(0, settings.maxHistoryEntries || 10);
     });
+  };
+
+  const addBookmark = (bookmark: Bookmark) => {
+    if (isExtension) {
+      const parentId = bookmark.folderId || undefined;
+      chrome.bookmarks.create({
+        parentId,
+        title: bookmark.title,
+        url: bookmark.url
+      }, (created) => {
+        getStorageItem('bm_metadata_bookmarks').then(currentMeta => {
+          const meta = currentMeta || {};
+          meta[created.id] = {
+            tags: bookmark.tags || [],
+            summary: bookmark.summary || '',
+          };
+          setStorageItem('bm_metadata_bookmarks', meta).then(() => {
+            pushHistory(`Added bookmark: ${bookmark.title}`, bookmarks, folders);
+          });
+        });
+      });
+    } else {
+      const newBookmark: Bookmark = {
+        ...bookmark,
+        id: bookmark.id || crypto.randomUUID(),
+      };
+      getStorageItem('bm_metadata_bookmarks').then(currentMeta => {
+        const meta = currentMeta || {};
+        meta[newBookmark.id] = {
+          tags: newBookmark.tags || [],
+          summary: newBookmark.summary || '',
+        };
+        setStorageItem('bm_metadata_bookmarks', meta).then(() => {
+          pushHistory(`Added bookmark: ${newBookmark.title}`, bookmarks, folders);
+          setBookmarks(prev => [newBookmark, ...prev]);
+        });
+      });
+    }
   };
 
   const updateBookmark = (id: string, updates: Partial<Bookmark>) => {
     const bm = bookmarks.find(b => b.id === id);
-    pushHistory(`Updated bookmark: ${bm ? bm.title : id}`, bookmarks, folders);
-    setBookmarks(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
+    if (!bm) return;
+    pushHistory(`Updated bookmark: ${bm.title}`, bookmarks, folders);
+
+    if (isExtension) {
+      const title = updates.title !== undefined ? updates.title : undefined;
+      const url = updates.url !== undefined ? updates.url : undefined;
+      
+      if (title !== undefined || url !== undefined) {
+        chrome.bookmarks.update(id, { title, url });
+      }
+      
+      if (updates.folderId !== undefined && updates.folderId !== bm.folderId) {
+        const parentId = updates.folderId || '1'; // Default to Bookmarks Bar
+        chrome.bookmarks.move(id, { parentId });
+      }
+      
+      if (updates.tags !== undefined || updates.summary !== undefined) {
+        getStorageItem('bm_metadata_bookmarks').then(currentMeta => {
+          const meta = currentMeta || {};
+          meta[id] = {
+            tags: updates.tags !== undefined ? updates.tags : (meta[id]?.tags || []),
+            summary: updates.summary !== undefined ? updates.summary : (meta[id]?.summary || ''),
+          };
+          setStorageItem('bm_metadata_bookmarks', meta).then(() => {
+            setBookmarks(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
+          });
+        });
+      }
+    } else {
+      getStorageItem('bm_metadata_bookmarks').then(currentMeta => {
+        const meta = currentMeta || {};
+        meta[id] = {
+          tags: updates.tags !== undefined ? updates.tags : (meta[id]?.tags || []),
+          summary: updates.summary !== undefined ? updates.summary : (meta[id]?.summary || ''),
+        };
+        setStorageItem('bm_metadata_bookmarks', meta).then(() => {
+          setBookmarks(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
+        });
+      });
+    }
   };
 
   const deleteBookmark = (id: string) => {
     const bm = bookmarks.find(b => b.id === id);
     pushHistory(`Deleted bookmark: ${bm ? bm.title : id}`, bookmarks, folders);
-    setBookmarks(prev => prev.filter(b => b.id !== id));
-  };
 
-  const addBookmark = (bookmark: Bookmark) => {
-    pushHistory(`Added bookmark: ${bookmark.title}`, bookmarks, folders);
-    setBookmarks(prev => [bookmark, ...prev]);
+    if (isExtension) {
+      chrome.bookmarks.remove(id, () => {
+        getStorageItem('bm_metadata_bookmarks').then(currentMeta => {
+          if (currentMeta && currentMeta[id]) {
+            delete currentMeta[id];
+            setStorageItem('bm_metadata_bookmarks', currentMeta);
+          }
+        });
+      });
+    } else {
+      getStorageItem('bm_metadata_bookmarks').then(currentMeta => {
+        if (currentMeta && currentMeta[id]) {
+          delete currentMeta[id];
+          setStorageItem('bm_metadata_bookmarks', currentMeta);
+        }
+        setBookmarks(prev => prev.filter(b => b.id !== id));
+      });
+    }
   };
 
   const batchUpdateBookmarks = (newBookmarks: Bookmark[], description: string) => {
     pushHistory(description, bookmarks, folders);
-    setBookmarks(newBookmarks);
+    if (isExtension) {
+      getStorageItem('bm_metadata_bookmarks').then(currentMeta => {
+        const meta = currentMeta || {};
+        newBookmarks.forEach(newBm => {
+          const oldBm = bookmarks.find(b => b.id === newBm.id);
+          if (!oldBm) return;
+          
+          if (newBm.title !== oldBm.title || newBm.url !== oldBm.url) {
+            chrome.bookmarks.update(newBm.id, { title: newBm.title, url: newBm.url });
+          }
+          if (newBm.folderId !== oldBm.folderId) {
+            chrome.bookmarks.move(newBm.id, { parentId: newBm.folderId || '1' });
+          }
+          
+          meta[newBm.id] = {
+            tags: newBm.tags || [],
+            summary: newBm.summary || '',
+          };
+        });
+        
+        setStorageItem('bm_metadata_bookmarks', meta).then(() => {
+          setBookmarks(newBookmarks);
+        });
+      });
+    } else {
+      getStorageItem('bm_metadata_bookmarks').then(currentMeta => {
+        const meta = currentMeta || {};
+        newBookmarks.forEach(bm => {
+          meta[bm.id] = {
+            tags: bm.tags || [],
+            summary: bm.summary || '',
+          };
+        });
+        setStorageItem('bm_metadata_bookmarks', meta).then(() => {
+          setBookmarks(newBookmarks);
+        });
+      });
+    }
   };
 
   const bulkDeleteBookmarks = (ids: string[], description: string) => {
     pushHistory(description, bookmarks, folders);
-    setBookmarks(prev => prev.filter(b => !ids.includes(b.id)));
+    if (isExtension) {
+      ids.forEach(id => {
+        chrome.bookmarks.remove(id);
+      });
+      getStorageItem('bm_metadata_bookmarks').then(currentMeta => {
+        if (currentMeta) {
+          ids.forEach(id => {
+            delete currentMeta[id];
+          });
+          setStorageItem('bm_metadata_bookmarks', currentMeta);
+        }
+      });
+    } else {
+      getStorageItem('bm_metadata_bookmarks').then(currentMeta => {
+        if (currentMeta) {
+          ids.forEach(id => {
+            delete currentMeta[id];
+          });
+          setStorageItem('bm_metadata_bookmarks', currentMeta);
+        }
+        setBookmarks(prev => prev.filter(b => !ids.includes(b.id)));
+      });
+    }
+  };
+
+  const addFolder = (folder: Folder) => {
+    if (isExtension) {
+      chrome.bookmarks.create({
+        parentId: folder.parentId || '1',
+        title: folder.name
+      }, (created) => {
+        getStorageItem('bm_metadata_folders').then(currentMeta => {
+          const meta = currentMeta || {};
+          meta[created.id] = {
+            promptContext: folder.promptContext || '',
+          };
+          setStorageItem('bm_metadata_folders', meta).then(() => {
+            pushHistory(`Added folder: ${folder.name}`, bookmarks, folders);
+          });
+        });
+      });
+    } else {
+      const newFolder: Folder = {
+        ...folder,
+        id: folder.id || crypto.randomUUID(),
+      };
+      getStorageItem('bm_metadata_folders').then(currentMeta => {
+        const meta = currentMeta || {};
+        meta[newFolder.id] = {
+          promptContext: newFolder.promptContext || '',
+        };
+        setStorageItem('bm_metadata_folders', meta).then(() => {
+          pushHistory(`Added folder: ${newFolder.name}`, bookmarks, folders);
+          setFolders(prev => [...prev, newFolder]);
+        });
+      });
+    }
   };
 
   const updateFolder = (id: string, updates: Partial<Folder>) => {
     const fol = folders.find(f => f.id === id);
-    pushHistory(`Updated folder: ${fol ? fol.name : id}`, bookmarks, folders);
-    setFolders(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
-  };
+    if (!fol) return;
+    pushHistory(`Updated folder: ${fol.name}`, bookmarks, folders);
 
-  const addFolder = (folder: Folder) => {
-    pushHistory(`Added folder: ${folder.name}`, bookmarks, folders);
-    setFolders(prev => [...prev, folder]);
+    if (isExtension) {
+      if (updates.name !== undefined) {
+        chrome.bookmarks.update(id, { title: updates.name });
+      }
+      if (updates.parentId !== undefined && updates.parentId !== fol.parentId) {
+        chrome.bookmarks.move(id, { parentId: updates.parentId || '1' });
+      }
+      if (updates.promptContext !== undefined) {
+        getStorageItem('bm_metadata_folders').then(currentMeta => {
+          const meta = currentMeta || {};
+          meta[id] = {
+            promptContext: updates.promptContext || '',
+          };
+          setStorageItem('bm_metadata_folders', meta).then(() => {
+            setFolders(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+          });
+        });
+      }
+    } else {
+      getStorageItem('bm_metadata_folders').then(currentMeta => {
+        const meta = currentMeta || {};
+        meta[id] = {
+          promptContext: updates.promptContext !== undefined ? updates.promptContext : (meta[id]?.promptContext || ''),
+        };
+        setStorageItem('bm_metadata_folders', meta).then(() => {
+          setFolders(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+        });
+      });
+    }
   };
 
   const deleteFolder = (id: string) => {
     const fol = folders.find(f => f.id === id);
-    pushHistory(`Deleted folder: ${fol ? fol.name : id}`, bookmarks, folders);
-    setFolders(prev => prev.filter(f => f.id !== id));
-    setBookmarks(prev => prev.map(b => b.folderId === id ? { ...b, folderId: null } : b));
+    if (!fol) return;
+    pushHistory(`Deleted folder: ${fol.name}`, bookmarks, folders);
+
+    if (isExtension) {
+      chrome.bookmarks.getSubTree(id, (results) => {
+        if (results && results.length > 0) {
+          const folderNode = results[0];
+          const parentId = (folderNode.parentId === '0' || !folderNode.parentId) ? '1' : folderNode.parentId;
+          
+          const movePromises = (folderNode.children || []).map(child => {
+            return new Promise<void>((resolve) => {
+              chrome.bookmarks.move(child.id, { parentId }, () => resolve());
+            });
+          });
+          
+          Promise.all(movePromises).then(() => {
+            chrome.bookmarks.remove(id, () => {
+              getStorageItem('bm_metadata_folders').then(currentMeta => {
+                if (currentMeta && currentMeta[id]) {
+                  delete currentMeta[id];
+                  setStorageItem('bm_metadata_folders', currentMeta);
+                }
+              });
+            });
+          });
+        }
+      });
+    } else {
+      getStorageItem('bm_metadata_folders').then(currentMeta => {
+        if (currentMeta && currentMeta[id]) {
+          delete currentMeta[id];
+          setStorageItem('bm_metadata_folders', currentMeta);
+        }
+        setFolders(prev => prev.filter(f => f.id !== id));
+        setBookmarks(prev => prev.map(b => b.folderId === id ? { ...b, folderId: null } : b));
+      });
+    }
   };
 
-  const revertToState = (id: string) => {
+  const revertChromeBookmarks = async (targetBookmarks: Bookmark[], targetFolders: Folder[]) => {
+    if (!isExtension) return;
+
+    // 1. Get current flat list of Chrome bookmarks & folders
+    const getCurrentChromeTree = (): Promise<chrome.bookmarks.BookmarkTreeNode[]> => {
+      return new Promise((resolve) => {
+        chrome.bookmarks.getTree((tree) => {
+          const list: chrome.bookmarks.BookmarkTreeNode[] = [];
+          const traverse = (node: chrome.bookmarks.BookmarkTreeNode) => {
+            list.push(node);
+            if (node.children) {
+              for (const child of node.children) traverse(child);
+            }
+          };
+          if (tree && tree.length > 0) traverse(tree[0]);
+          resolve(list);
+        });
+      });
+    };
+
+    const currentNodes = await getCurrentChromeTree();
+    const currentFolders = currentNodes.filter(n => !n.url && n.id !== '0');
+    const currentBookmarks = currentNodes.filter(n => !!n.url);
+
+    const oldIdToNewId: Record<string, string> = {
+      '1': '1', // Bookmarks Bar
+      '2': '2', // Other Bookmarks
+      '3': '3', // Mobile Bookmarks
+    };
+
+    // Helper to create folders recursively
+    const ensureFolderInChrome = async (oldFolderId: string): Promise<string> => {
+      if (oldIdToNewId[oldFolderId]) {
+        return oldIdToNewId[oldFolderId];
+      }
+
+      const targetFolder = targetFolders.find(f => f.id === oldFolderId);
+      if (!targetFolder) {
+        return '1';
+      }
+
+      const parentId = targetFolder.parentId ? await ensureFolderInChrome(targetFolder.parentId) : '1';
+
+      // Check if folder exists
+      const existing = currentFolders.find(f => f.title === targetFolder.name && f.parentId === parentId);
+      if (existing) {
+        oldIdToNewId[oldFolderId] = existing.id;
+        return existing.id;
+      }
+
+      return new Promise<string>((resolve) => {
+        chrome.bookmarks.create({
+          parentId,
+          title: targetFolder.name
+        }, (created) => {
+          oldIdToNewId[oldFolderId] = created.id;
+          resolve(created.id);
+        });
+      });
+    };
+
+    for (const f of targetFolders) {
+      await ensureFolderInChrome(f.id);
+    }
+
+    const createdBookmarkIds = new Set<string>();
+
+    for (const bm of targetBookmarks) {
+      const parentId = bm.folderId ? (oldIdToNewId[bm.folderId] || '1') : '1';
+      const existing = currentBookmarks.find(b => b.url === bm.url);
+
+      if (existing) {
+        await new Promise<void>((resolve) => {
+          chrome.bookmarks.update(existing.id, { title: bm.title }, () => {
+            if (existing.parentId !== parentId) {
+              chrome.bookmarks.move(existing.id, { parentId }, () => {
+                oldIdToNewId[bm.id] = existing.id;
+                createdBookmarkIds.add(existing.id);
+                resolve();
+              });
+            } else {
+              oldIdToNewId[bm.id] = existing.id;
+              createdBookmarkIds.add(existing.id);
+              resolve();
+            }
+          });
+        });
+      } else {
+        await new Promise<void>((resolve) => {
+          chrome.bookmarks.create({
+            parentId,
+            title: bm.title,
+            url: bm.url
+          }, (created) => {
+            oldIdToNewId[bm.id] = created.id;
+            createdBookmarkIds.add(created.id);
+            resolve();
+          });
+        });
+      }
+    }
+
+    // Delete bookmarks not in target
+    for (const cb of currentBookmarks) {
+      if (!createdBookmarkIds.has(cb.id)) {
+        await new Promise<void>((resolve) => {
+          chrome.bookmarks.remove(cb.id, () => resolve());
+        });
+      }
+    }
+
+    // Delete folders not in target
+    const targetNewFolderIds = new Set(Object.values(oldIdToNewId));
+    for (const cf of currentFolders) {
+      if (cf.id !== '1' && cf.id !== '2' && cf.id !== '3' && !targetNewFolderIds.has(cf.id)) {
+        await new Promise<void>((resolve) => {
+          chrome.bookmarks.removeTree(cf.id, () => resolve());
+        });
+      }
+    }
+
+    // Save metadata with new IDs
+    const bmsMeta: Record<string, any> = {};
+    targetBookmarks.forEach(b => {
+      const newId = oldIdToNewId[b.id] || b.id;
+      bmsMeta[newId] = { tags: b.tags, summary: b.summary };
+    });
+
+    const folsMeta: Record<string, any> = {};
+    targetFolders.forEach(f => {
+      const newId = oldIdToNewId[f.id] || f.id;
+      folsMeta[newId] = { promptContext: f.promptContext };
+    });
+
+    await setStorageItem('bm_metadata_bookmarks', bmsMeta);
+    await setStorageItem('bm_metadata_folders', folsMeta);
+  };
+
+  const revertToState = async (id: string) => {
     const entry = history.find(h => h.id === id);
     if (!entry) return;
     pushHistory(`Reverted to: ${entry.description}`, bookmarks, folders);
-    setBookmarks(entry.bookmarks);
-    setFolders(entry.folders);
+    
+    if (isExtension) {
+      isReconcilingRef.current = true;
+      try {
+        await revertChromeBookmarks(entry.bookmarks, entry.folders);
+        await loadData();
+      } catch (err) {
+        console.error("Error during bookmarks revert reconciliation:", err);
+      } finally {
+        isReconcilingRef.current = false;
+      }
+    } else {
+      setBookmarks(entry.bookmarks);
+      setFolders(entry.folders);
+    }
   };
 
   const clearHistory = () => {
@@ -165,14 +739,113 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const injectPresetData = (name: string, bms: Bookmark[], fols: Folder[]) => {
     pushHistory(`Injected preset: ${name}`, bookmarks, folders);
-    setBookmarks(bms);
-    setFolders(fols);
+    if (isExtension) {
+      chrome.bookmarks.create({
+        parentId: '1',
+        title: `Preset: ${name}`
+      }, (presetRoot) => {
+        const folderIdMap: Record<string, string> = {};
+        
+        const createFoldersMap = async () => {
+          const remainingFolders = [...fols];
+          for (let loop = 0; loop < 10 && remainingFolders.length > 0; loop++) {
+            for (let i = remainingFolders.length - 1; i >= 0; i--) {
+              const f = remainingFolders[i];
+              if (!f.parentId || folderIdMap[f.parentId]) {
+                const parent = f.parentId ? folderIdMap[f.parentId] : presetRoot.id;
+                const createdFolder = await new Promise<chrome.bookmarks.BookmarkTreeNode>((resolve) => {
+                  chrome.bookmarks.create({
+                    parentId: parent,
+                    title: f.name
+                  }, resolve);
+                });
+                folderIdMap[f.id] = createdFolder.id;
+                
+                const currentFoldersMeta = await getStorageItem('bm_metadata_folders') || {};
+                currentFoldersMeta[createdFolder.id] = {
+                  promptContext: f.promptContext || '',
+                };
+                await setStorageItem('bm_metadata_folders', currentFoldersMeta);
+                
+                remainingFolders.splice(i, 1);
+              }
+            }
+          }
+          
+          const currentBookmarksMeta = await getStorageItem('bm_metadata_bookmarks') || {};
+          for (const bm of bms) {
+            const parent = bm.folderId ? folderIdMap[bm.folderId] : presetRoot.id;
+            const createdBookmark = await new Promise<chrome.bookmarks.BookmarkTreeNode>((resolve) => {
+              chrome.bookmarks.create({
+                parentId: parent,
+                title: bm.title,
+                url: bm.url
+              }, resolve);
+            });
+            currentBookmarksMeta[createdBookmark.id] = {
+              tags: bm.tags || [],
+              summary: bm.summary || '',
+            };
+          }
+          await setStorageItem('bm_metadata_bookmarks', currentBookmarksMeta);
+        };
+        
+        createFoldersMap();
+      });
+    } else {
+      getStorageItem('bm_metadata_bookmarks').then(currentBookmarksMeta => {
+        const bookmarksMeta = currentBookmarksMeta || {};
+        bms.forEach(bm => {
+          bookmarksMeta[bm.id] = {
+            tags: bm.tags || [],
+            summary: bm.summary || '',
+          };
+        });
+        setStorageItem('bm_metadata_bookmarks', bookmarksMeta);
+      });
+      
+      getStorageItem('bm_metadata_folders').then(currentFoldersMeta => {
+        const foldersMeta = currentFoldersMeta || {};
+        fols.forEach(f => {
+          foldersMeta[f.id] = {
+            promptContext: f.promptContext || '',
+          };
+        });
+        setStorageItem('bm_metadata_folders', foldersMeta);
+      });
+      
+      setBookmarks(bms);
+      setFolders(fols);
+    }
   };
 
   const clearDatabase = () => {
     pushHistory('Cleared bookmarks and folders database', bookmarks, folders);
-    setBookmarks([]);
-    setFolders([]);
+    if (isExtension) {
+      chrome.bookmarks.getTree((tree) => {
+        const root = tree[0];
+        if (root.children) {
+          root.children.forEach(child => {
+            if (child.children) {
+              child.children.forEach(subChild => {
+                chrome.bookmarks.removeTree(subChild.id, () => {
+                  if (chrome.runtime.lastError) {
+                    console.error("Error removing node:", subChild.id, chrome.runtime.lastError);
+                  }
+                });
+              });
+            }
+          });
+        }
+        setStorageItem('bm_metadata_bookmarks', {});
+        setStorageItem('bm_metadata_folders', {});
+      });
+    } else {
+      setBookmarks([]);
+      setFolders([]);
+      setStorageItem('bm_metadata_bookmarks', {});
+      setStorageItem('bm_metadata_folders', {});
+    }
   };
 
   return (

@@ -28,6 +28,16 @@ export type Settings = {
   temperature: number;
   maxTokens: number;
   viewMode: 'extension' | 'dashboard'; // simulation layout matching user requested chrome extension concept
+  geminiUrl?: string;
+  geminiApiKey?: string;
+  openaiUrl?: string;
+  openaiApiKey?: string;
+  ollamaUrl?: string;
+  ollamaApiKey?: string;
+  lmstudioUrl?: string;
+  lmstudioApiKey?: string;
+  customApiKey?: string;
+  maxHistoryEntries?: number;
 };
 
 export type Proposal = {

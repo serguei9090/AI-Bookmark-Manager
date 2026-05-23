@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { BookmarksView } from './components/BookmarksView';
 import { CategoriesView } from './components/CategoriesView';
 import { DuplicatesView } from './components/DuplicatesView';
 import { SettingsView } from './components/SettingsView';
 import { HistoryView } from './components/HistoryView';
+import { SimplePopupView } from './components/SimplePopupView';
 import { AppProvider, useAppContext } from './store';
 import { Bookmark, Folder } from './types';
 import { Monitor, Layers, ShieldCheck, Cpu, RefreshCw, Sparkles, FolderPlus, Compass, ArrowLeft, ArrowRight, Home, PlusSquare } from 'lucide-react';
@@ -37,10 +38,35 @@ const PRESETS: Record<string, { bms: Bookmark[], fols: Folder[] }> = {
   }
 };
 
+// Detect if running inside a real Chrome extension popup
+const isActualExtensionPopup = typeof window !== 'undefined' &&
+  typeof chrome !== 'undefined' &&
+  chrome.runtime &&
+  chrome.runtime.id &&
+  (new URLSearchParams(window.location.search).get('popup') === 'true' || window.innerWidth < 500);
+
 function AppLayout() {
   const { bookmarks, settings, setSettings, injectPresetData, clearDatabase } = useAppContext();
   const [activeTab, setActiveTab] = useState('bookmarks');
   const [chromePopupOpen, setChromePopupOpen] = useState(true);
+
+  useEffect(() => {
+    if (isActualExtensionPopup) {
+      document.documentElement.style.width = '430px';
+      document.documentElement.style.height = '600px';
+      document.body.style.width = '430px';
+      document.body.style.height = '600px';
+      document.body.style.overflow = 'hidden';
+    }
+  }, []);
+
+  if (isActualExtensionPopup) {
+    return (
+      <div className="w-[430px] h-[600px] bg-white dark:bg-gray-900 flex flex-col overflow-hidden p-4">
+        <SimplePopupView />
+      </div>
+    );
+  }
 
   // Quick Preset Injector
   const injectPreset = (key: string) => {
@@ -247,72 +273,8 @@ function AppLayout() {
 
                 {/* CHROME EXTENSION DROPDOWN PANEL POPUP LAYOUT */}
                 {chromePopupOpen && (
-                  <div className="absolute top-2 right-2 w-[430px] h-[550px] bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-800 shadow-2xl rounded-2xl flex flex-col overflow-hidden z-20 animate-scale-up">
-                    
-                    {/* EXTENSION INTERNAL HEADER CONTROLS */}
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3.5 flex items-center justify-between flex-shrink-0 shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <Cpu size={18} />
-                        <span className="font-bold text-sm tracking-tight">AI Bookmarks Manager Client</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => {
-                            setSettings(prev => ({ ...prev, viewMode: 'dashboard' }));
-                          }}
-                          className="bg-white/10 hover:bg-white/20 px-2 py-1 rounded text-[10px] font-bold tracking-wider uppercase transition-all"
-                          title="Expand popup page to full administrative layout"
-                        >
-                          Maximize to Dashboard Layout ↗
-                        </button>
-                        <button onClick={() => setChromePopupOpen(false)} className="hover:bg-white/15 p-1 rounded">
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* EXTENSION SUBMENU TABS */}
-                    <div className="flex bg-gray-50 dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 text-xs text-gray-500 font-semibold text-center flex-shrink-0">
-                      <button 
-                        onClick={() => setActiveTab('bookmarks')}
-                        className={`flex-1 py-2 border-b-2 transition-colors ${activeTab === 'bookmarks' ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-900' : 'border-transparent hover:text-gray-800 dark:hover:text-gray-100'}`}
-                      >
-                        Links
-                      </button>
-                      <button 
-                        onClick={() => setActiveTab('categories')}
-                        className={`flex-1 py-2 border-b-2 transition-colors ${activeTab === 'categories' ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-900' : 'border-transparent hover:text-gray-800 dark:hover:text-gray-100'}`}
-                      >
-                        Folders
-                      </button>
-                      <button 
-                        onClick={() => setActiveTab('duplicates')}
-                        className={`flex-1 py-2 border-b-2 transition-colors ${activeTab === 'duplicates' ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-900' : 'border-transparent hover:text-gray-800 dark:hover:text-gray-100'}`}
-                      >
-                        Dupes
-                      </button>
-                      <button 
-                        onClick={() => setActiveTab('history')}
-                        className={`flex-1 py-2 border-b-2 transition-colors ${activeTab === 'history' ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-900' : 'border-transparent hover:text-gray-800 dark:hover:text-gray-100'}`}
-                      >
-                        History
-                      </button>
-                      <button 
-                        onClick={() => setActiveTab('settings')}
-                        className={`flex-1 py-2 border-b-2 transition-colors ${activeTab === 'settings' ? 'border-blue-600 text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-900' : 'border-transparent hover:text-gray-800 dark:hover:text-gray-100'}`}
-                      >
-                        Params
-                      </button>
-                    </div>
-
-                    {/* EXTENSION CONTENT FRAME */}
-                    <div className="flex-1 overflow-y-auto p-4 bg-white dark:bg-gray-900">
-                      {activeTab === 'bookmarks' && <BookmarksView />}
-                      {activeTab === 'categories' && <CategoriesView />}
-                      {activeTab === 'duplicates' && <DuplicatesView />}
-                      {activeTab === 'history' && <HistoryView />}
-                      {activeTab === 'settings' && <SettingsView />}
-                    </div>
+                  <div className="absolute top-2 right-2 w-[430px] h-[550px] bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-800 shadow-2xl rounded-2xl flex flex-col overflow-hidden z-20 animate-scale-up p-4">
+                    <SimplePopupView />
                   </div>
                 )}
 
