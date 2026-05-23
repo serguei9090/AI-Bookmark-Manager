@@ -56,11 +56,13 @@ export function SettingsView() {
   const [isFetching, setIsFetching] = useState(false);
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [modelMeta, setModelMeta] = useState<Record<string, { outputTokenLimit?: number }>>({});
 
   // Clear fetched model list when provider changes
   useEffect(() => {
     setFetchedModels([]);
     setFetchError(null);
+    setModelMeta({});
   }, [settings.provider]);
 
   const handleSave = () => {
@@ -86,13 +88,23 @@ export function SettingsView() {
         const res = await fetch(listUrl);
         if (!res.ok) throw new Error(`Gemini API returned ${res.status}`);
         const data = await res.json();
-        models = (data.models || [])
+        
+        const metaMap: Record<string, { outputTokenLimit?: number }> = {};
+        const modelsList = (data.models || [])
           // Only include models that support generateContent
           .filter((m: any) =>
             (m.supportedGenerationMethods || []).includes("generateContent"),
-          )
-          .map((m: any) => (m.name || "").replace(/^models\//, ""))
-          .filter(Boolean);
+          );
+        
+        modelsList.forEach((m: any) => {
+          const name = (m.name || "").replace(/^models\//, "");
+          if (name) {
+            metaMap[name] = { outputTokenLimit: m.outputTokenLimit };
+          }
+        });
+        
+        setModelMeta(metaMap);
+        models = Object.keys(metaMap).sort();
       } else if (settings.provider === "openai") {
         // OpenAI: GET /v1/models  with Bearer auth
         const res = await fetch(`${base}/v1/models`, {
@@ -134,7 +146,11 @@ export function SettingsView() {
       setFetchedModels(models);
       // Auto-select first model if current selection not in new list
       if (!models.includes(settings.model)) {
-        setSettings((prev: any) => ({ ...prev, model: models[0] }));
+        const nextModel = models[0] || "";
+        setSettings((prev: any) => ({
+          ...prev,
+          model: nextModel,
+        }));
       }
     } catch (err: any) {
       setFetchError(err.message || "Failed to fetch models");
@@ -216,9 +232,11 @@ export function SettingsView() {
               <select
                 className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all font-mono text-sm"
                 value={settings.model}
-                onChange={(e) =>
-                  setSettings({ ...settings, model: e.target.value })
-                }
+                onChange={(e) => {
+                  const mVal = e.target.value;
+                  const limit = modelMeta[mVal]?.outputTokenLimit ?? 0;
+                  setSettings({ ...settings, model: mVal, maxTokens: limit });
+                }}
               >
                 {fetchedModels.length === 0 ? (
                   <option value={settings.model || ""} disabled>
@@ -440,7 +458,7 @@ export function SettingsView() {
                 </label>
                 <button
                   type="button"
-                  onClick={() => setSettings({ ...settings, maxTokens: 4096 })}
+                  onClick={() => setSettings({ ...settings, maxTokens: 0 })}
                   className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold hover:underline"
                   title="Set to 0 to let the AI endpoint decide automatically"
                 >
@@ -463,8 +481,9 @@ export function SettingsView() {
                 className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white font-mono text-sm focus:ring-2 focus:ring-purple-500 outline-none transition-all"
               />
               <span className="block text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-                Default 4096 · enter any value (e.g. 2048, 32768, 128000) · 0 =
-                omit limit
+                {modelMeta[settings.model]?.outputTokenLimit
+                  ? `Auto-detected from model: ${modelMeta[settings.model].outputTokenLimit.toLocaleString()} tokens (0 = omit limit)`
+                  : "Default 4096 · enter any value (e.g. 2048, 32768, 128000) · 0 = omit limit"}
               </span>
             </div>
           </div>

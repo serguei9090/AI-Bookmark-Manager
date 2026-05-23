@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { BookmarksView } from "./components/BookmarksView";
+import { OrganizeView } from "./components/OrganizeView";
 import { CategoriesView } from "./components/CategoriesView";
 import { DuplicatesView } from "./components/DuplicatesView";
 import { SettingsView } from "./components/SettingsView";
@@ -45,6 +46,7 @@ function AppLayout() {
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
         <main className="flex-1 overflow-y-auto px-6 py-8 md:px-10">
           {activeTab === "bookmarks" && <BookmarksView />}
+          {activeTab === "organize" && <OrganizeView />}
           {activeTab === "categories" && <CategoriesView />}
           {activeTab === "duplicates" && <DuplicatesView />}
           {activeTab === "history" && <HistoryView />}

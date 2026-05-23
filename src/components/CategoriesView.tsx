@@ -21,10 +21,12 @@ export function CategoriesView() {
   const {
     bookmarks,
     folders,
+    aiFolders,
     batchUpdateBookmarks,
-    addFolder,
-    deleteFolder,
-    updateFolder,
+    addAiFolder,
+    deleteAiFolder,
+    updateAiFolder,
+    reloadAiFoldersFromReal,
     settings,
   } = useAppContext();
   const [isSorting, setIsSorting] = useState(false);
@@ -46,9 +48,18 @@ export function CategoriesView() {
   const [inlineFolderName, setInlineFolderName] = useState("");
   const [inlinePromptContext, setInlinePromptContext] = useState("");
 
+  // Helper to map blueprint folder IDs to real Chrome folder IDs by matching names
+  const getRealFolderId = (aiFolderId: string | null): string | null => {
+    if (!aiFolderId) return null;
+    const aiFolder = aiFolders.find((f) => f.id === aiFolderId);
+    if (!aiFolder) return null;
+    const realFolder = folders.find((rf) => rf.id === aiFolder.id || rf.name.toLowerCase() === aiFolder.name.toLowerCase());
+    return realFolder ? realFolder.id : null;
+  };
+
   const handleInlineCreateFolder = (parentId: string | null) => {
     if (!inlineFolderName.trim()) return;
-    addFolder({
+    addAiFolder({
       id: crypto.randomUUID(),
       parentId,
       name: inlineFolderName.trim(),
@@ -69,12 +80,17 @@ export function CategoriesView() {
   const handleAutoSort = async () => {
     setIsSorting(true);
     try {
-      const mapping = await autoSortBookmarks(bookmarks, folders, settings);
+      const mapping = await autoSortBookmarks(bookmarks, aiFolders, settings);
       if (mapping && Object.keys(mapping).length > 0) {
-        const updatedBms = bookmarks.map((b) => ({
-          ...b,
-          folderId: mapping[b.id] !== undefined ? mapping[b.id] : b.folderId,
-        }));
+        const updatedBms = bookmarks.map((b) => {
+          if (b.manuallyAssigned) return b;
+          const targetAiId = mapping[b.id];
+          if (targetAiId === undefined) return b;
+          return {
+            ...b,
+            folderId: getRealFolderId(targetAiId),
+          };
+        });
         batchUpdateBookmarks(updatedBms, "AI Auto-Sorted bookmarks");
         alert(
           "AI Auto-Sort complete! Bookmarks organized securely based on folder semantic definitions.",
@@ -91,13 +107,11 @@ export function CategoriesView() {
   };
 
   const fallbackAutoSort = () => {
-    // Elegant local client regex matching based on promptContext + folder names
     let matchCount = 0;
     const updated = bookmarks.map((b) => {
-      if (b.folderId) return b; // keep existing manual allocation
+      if (b.folderId || b.manuallyAssigned) return b;
 
-      // Look for keywords in folder names/definitions
-      for (const fol of folders) {
+      for (const fol of aiFolders) {
         const keywords = [
           fol.name.toLowerCase(),
           ...(fol.promptContext
@@ -112,8 +126,11 @@ export function CategoriesView() {
         );
 
         if (textMatches) {
-          matchCount++;
-          return { ...b, folderId: fol.id };
+          const realId = getRealFolderId(fol.id);
+          if (realId) {
+            matchCount++;
+            return { ...b, folderId: realId };
+          }
         }
       }
       return b;
@@ -165,7 +182,7 @@ export function CategoriesView() {
 
   const applyProposals = () => {
     proposals.forEach((p) => {
-      addFolder({
+      addAiFolder({
         id: crypto.randomUUID(),
         parentId: null,
         name: p.name,
@@ -173,14 +190,14 @@ export function CategoriesView() {
       });
     });
     setProposals([]);
-    alert("Category Proposals successfully loaded into your active database!");
+    alert("Category Proposals successfully loaded into your active AI blueprint database!");
   };
 
   const handleCreateFolderSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFolderName.trim()) return;
 
-    addFolder({
+    addAiFolder({
       id: crypto.randomUUID(),
       parentId: newParentId === "root" ? null : newParentId,
       name: newFolderName.trim(),
@@ -202,7 +219,7 @@ export function CategoriesView() {
 
   const saveEdit = () => {
     if (!editName.trim()) return;
-    updateFolder(editingId!, {
+    updateAiFolder(editingId!, {
       name: editName.trim(),
       parentId: editParentId === "root" ? null : editParentId,
       promptContext: editPromptContext.trim(),
@@ -213,21 +230,21 @@ export function CategoriesView() {
   const handleDeleteFolder = (id: string, name: string) => {
     if (
       window.confirm(
-        `Are you sure you want to delete the category "${name}"? This will move its bookmarks and subfolders to the parent level.`,
+        `Are you sure you want to delete the blueprint category "${name}"? This will NOT touch your real Chrome bookmarks.`,
       )
     ) {
-      deleteFolder(id);
+      deleteAiFolder(id);
     }
   };
 
   // Build recursive tree visual
   const rootFolders = useMemo(
-    () => folders.filter((f) => !f.parentId),
-    [folders],
+    () => aiFolders.filter((f) => !f.parentId),
+    [aiFolders],
   );
   const subFoldersMap = useMemo(() => {
     const map = new Map<string, Folder[]>();
-    folders.forEach((f) => {
+    aiFolders.forEach((f) => {
       if (f.parentId) {
         const group = map.get(f.parentId) || [];
         group.push(f);
@@ -235,7 +252,7 @@ export function CategoriesView() {
       }
     });
     return map;
-  }, [folders]);
+  }, [aiFolders]);
 
   const getBookmarksCount = (folderId: string) => {
     return bookmarks.filter((b) => b.folderId === folderId).length;
@@ -262,19 +279,30 @@ export function CategoriesView() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold dark:text-white tracking-tight">
-            Categories & Subfolders
+            AI Categories Blueprint
           </h2>
           <p className="text-gray-500 dark:text-gray-400">
-            Structure bookmark directories and inject category-level prompts for
-            AI classifiers.
+            Define folder structure & AI prompts context to guide organization.
           </p>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto self-end">
+        <div className="flex gap-2 w-full sm:w-auto self-end flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm("Are you sure you want to reload folder structures from your live Chrome folders? This will replace your current AI blueprint tree (prompt contexts for matching folder names will be preserved).")) {
+                reloadAiFoldersFromReal();
+              }
+            }}
+            className="flex-1 sm:flex-initial bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-850 dark:text-white px-4 py-2.5 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-1.5 border border-gray-250 dark:border-gray-700 cursor-pointer"
+          >
+            ↺ Reload from Chrome
+          </button>
+
           <button
             type="button"
             onClick={handlePropose}
             disabled={isProposing}
-            className="flex-1 sm:flex-initial bg-purple-100 hover:bg-purple-200 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-4 py-2.5 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-1.5"
+            className="flex-1 sm:flex-initial bg-purple-100 hover:bg-purple-200 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-4 py-2.5 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <Sparkles size={16} />
             {isProposing ? "Analyzing..." : "AI Propose Layout"}
@@ -284,11 +312,24 @@ export function CategoriesView() {
             type="button"
             onClick={handleAutoSort}
             disabled={isSorting}
-            className="flex-1 sm:flex-initial bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-1.5 shadow-sm"
+            className="flex-1 sm:flex-initial bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
           >
             <Sparkles size={16} />
             {isSorting ? "Organizing..." : "AI Auto-Sort"}
           </button>
+        </div>
+      </div>
+
+      {/* WARNING BANNER */}
+      <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-250 dark:border-amber-900/30 rounded-2xl p-4 flex items-start gap-3">
+        <HelpCircle className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={20} />
+        <div>
+          <h4 className="font-semibold text-amber-900 dark:text-amber-400 text-sm">
+            AI Blueprint Context Definition Layer
+          </h4>
+          <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 leading-relaxed">
+            This is your AI folder blueprint. Changes here only affect how the AI sorts bookmarks (by defining categories and prompt contexts) — not your real Chrome folders. Use the <strong>Organize</strong> tab to manage real folders.
+          </p>
         </div>
       </div>
 
@@ -399,7 +440,7 @@ export function CategoriesView() {
               <span>Add Root Category</span>
             </button>
             <span className="text-[10px] bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded-md text-gray-500 font-mono">
-              Count: {folders.length} Nodes
+              Count: {aiFolders.length} Nodes
             </span>
           </div>
         </div>
@@ -454,10 +495,9 @@ export function CategoriesView() {
             </div>
           )}
 
-          {folders.length === 0 && addingUnderFolderId !== "root" ? (
+          {aiFolders.length === 0 && addingUnderFolderId !== "root" ? (
             <div className="text-center py-20 text-gray-400 italic">
-              No folders custom-defined. Select "AI Propose Layout" to bootstrap
-              quickly!
+              No categories blueprint defined. Select "AI Propose Layout" or click "Reload from Chrome" to bootstrap!
             </div>
           ) : (
             rootFolders.map((root) => {
@@ -482,7 +522,7 @@ export function CategoriesView() {
                         className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 dark:text-white text-xs"
                       >
                         <option value="root">📁 Root Level</option>
-                        {folders
+                        {aiFolders
                           .filter((f) => f.id !== root.id)
                           .map((f) => (
                             <option key={f.id} value={f.id}>
@@ -594,7 +634,7 @@ export function CategoriesView() {
                                   className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 dark:text-white text-xs outline-none focus:ring-1 focus:ring-blue-500"
                                 >
                                   <option value="root">📁 Root Level</option>
-                                  {folders
+                                  {aiFolders
                                     .filter((f) => f.id !== sub.id)
                                     .map((f) => (
                                       <option key={f.id} value={f.id}>

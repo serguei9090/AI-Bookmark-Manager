@@ -27,7 +27,7 @@ async function startServer() {
   // API Route: Categorize existing bookmarks
   app.post('/api/ai/auto-sort', async (req, res) => {
     try {
-      const { bookmarks, folders, systemPrompt } = req.body;
+      const { bookmarks, folders, systemPrompt, model } = req.body;
       const ai = getGeminiClient();
       
       const prompt = `
@@ -44,7 +44,7 @@ async function startServer() {
       `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: model || 'gemini-3.5-flash',
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -74,7 +74,7 @@ async function startServer() {
   // API Route: Propose categories
   app.post('/api/ai/propose-category', async (req, res) => {
     try {
-      const { bookmarks, systemPrompt } = req.body;
+      const { bookmarks, systemPrompt, model } = req.body;
       const ai = getGeminiClient();
       
       const prompt = `
@@ -86,7 +86,7 @@ async function startServer() {
       `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: model || 'gemini-3.5-flash',
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -123,7 +123,7 @@ async function startServer() {
   // API Route: Summarize bookmark
   app.post('/api/ai/summarize', async (req, res) => {
     try {
-      const { bookmark } = req.body;
+      const { bookmark, model } = req.body;
       const ai = getGeminiClient();
       
       const prompt = `
@@ -133,7 +133,7 @@ async function startServer() {
       `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
+        model: model || 'gemini-3.5-flash',
         contents: prompt,
         config: {
           responseMimeType: "application/json",

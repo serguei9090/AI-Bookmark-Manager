@@ -14,7 +14,7 @@ const initialSettings: Settings = {
   systemPrompt: "You are an intelligent bookmark manager assistant.",
   darkMode: true,
   temperature: 0.7,
-  maxTokens: 4096,
+  maxTokens: 0,
   viewMode: "dashboard",
   geminiUrl: "",
   geminiApiKey: "",
@@ -110,10 +110,12 @@ const setStorageItem = async (key: string, value: any): Promise<void> => {
 type AppContextType = {
   bookmarks: Bookmark[];
   folders: Folder[];
+  aiFolders: Folder[];
   settings: Settings;
   history: HistoryEntry[];
   setBookmarks: React.Dispatch<React.SetStateAction<Bookmark[]>>;
   setFolders: React.Dispatch<React.SetStateAction<Folder[]>>;
+  setAiFolders: React.Dispatch<React.SetStateAction<Folder[]>>;
   setSettings: React.Dispatch<React.SetStateAction<Settings>>;
   updateBookmark: (id: string, updates: Partial<Bookmark>) => void;
   deleteBookmark: (id: string) => void;
@@ -123,6 +125,10 @@ type AppContextType = {
   updateFolder: (id: string, updates: Partial<Folder>) => void;
   addFolder: (folder: Folder) => void;
   deleteFolder: (id: string) => void;
+  addAiFolder: (folder: Folder) => void;
+  updateAiFolder: (id: string, updates: Partial<Folder>) => void;
+  deleteAiFolder: (id: string) => void;
+  reloadAiFoldersFromReal: () => void;
   revertToState: (id: string) => void;
   clearHistory: () => void;
   injectPresetData: (name: string, bms: Bookmark[], fols: Folder[]) => void;
@@ -149,6 +155,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     const saved = localStorage.getItem("bm_folders");
     return saved ? JSON.parse(saved) : initialFolders;
   });
+
+  const [aiFolders, setAiFolders] = useState<Folder[]>([]);
 
   const [settings, setSettings] = useState<Settings>(() => {
     const saved = localStorage.getItem("bm_settings");
@@ -223,6 +231,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                   tags: meta.tags || [],
                   summary: meta.summary || "",
                   dateAdded: node.dateAdded || Date.now(),
+                  manuallyAssigned: meta.manuallyAssigned || false,
                 });
               }
             }
@@ -241,6 +250,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           setBookmarks(bookmarksList);
           setFolders(foldersList);
           initializeHistoryIfEmpty(bookmarksList, foldersList);
+          
+          getStorageItem("bm_blueprint_folders").then((savedAiFolders) => {
+            if (savedAiFolders) {
+              setAiFolders(savedAiFolders);
+            } else {
+              const initialAiFolders = foldersList.map(f => ({ ...f }));
+              setAiFolders(initialAiFolders);
+              setStorageItem("bm_blueprint_folders", initialAiFolders);
+            }
+          });
         });
       } catch (err) {
         console.error("Error loading bookmarks from Chrome API", err);
@@ -265,6 +284,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           ...bm,
           tags: meta.tags || bm.tags || [],
           summary: meta.summary || bm.summary || "",
+          manuallyAssigned: meta.manuallyAssigned || bm.manuallyAssigned || false,
         };
       });
 
@@ -279,6 +299,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       setBookmarks(bookmarksList);
       setFolders(foldersList);
       initializeHistoryIfEmpty(bookmarksList, foldersList);
+
+      const savedAiFolders = await getStorageItem("bm_blueprint_folders");
+      if (savedAiFolders) {
+        setAiFolders(savedAiFolders);
+      } else {
+        const initialAiFolders = foldersList.map(f => ({ ...f }));
+        setAiFolders(initialAiFolders);
+        await setStorageItem("bm_blueprint_folders", initialAiFolders);
+      }
     }
   };
 
@@ -381,6 +410,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             meta[created.id] = {
               tags: bookmark.tags || [],
               summary: bookmark.summary || "",
+              manuallyAssigned: bookmark.manuallyAssigned || false,
             };
             setStorageItem("bm_metadata_bookmarks", meta).then(async () => {
               await loadData();
@@ -404,6 +434,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         meta[newBookmark.id] = {
           tags: newBookmark.tags || [],
           summary: newBookmark.summary || "",
+          manuallyAssigned: newBookmark.manuallyAssigned || false,
         };
         setStorageItem("bm_metadata_bookmarks", meta).then(() => {
           pushHistory(
@@ -446,7 +477,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         );
       }
 
-      if (updates.tags !== undefined || updates.summary !== undefined) {
+      if (updates.tags !== undefined || updates.summary !== undefined || updates.manuallyAssigned !== undefined) {
         const metadataPromise = getStorageItem("bm_metadata_bookmarks").then(
           (currentMeta) => {
             const meta = currentMeta || {};
@@ -459,6 +490,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                 updates.summary !== undefined
                   ? updates.summary
                   : meta[id]?.summary || "",
+              manuallyAssigned:
+                updates.manuallyAssigned !== undefined
+                  ? updates.manuallyAssigned
+                  : meta[id]?.manuallyAssigned || false,
             };
             return setStorageItem("bm_metadata_bookmarks", meta);
           },
@@ -485,6 +520,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
             updates.summary !== undefined
               ? updates.summary
               : meta[id]?.summary || "",
+          manuallyAssigned:
+            updates.manuallyAssigned !== undefined
+              ? updates.manuallyAssigned
+              : meta[id]?.manuallyAssigned || false,
         };
         setStorageItem("bm_metadata_bookmarks", meta).then(() => {
           setBookmarks((prev) =>
@@ -568,6 +607,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           meta[newBm.id] = {
             tags: newBm.tags || [],
             summary: newBm.summary || "",
+            manuallyAssigned: newBm.manuallyAssigned !== undefined ? newBm.manuallyAssigned : (meta[newBm.id]?.manuallyAssigned || false),
           };
         });
 
@@ -591,6 +631,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           meta[bm.id] = {
             tags: bm.tags || [],
             summary: bm.summary || "",
+            manuallyAssigned: bm.manuallyAssigned !== undefined ? bm.manuallyAssigned : (meta[bm.id]?.manuallyAssigned || false),
           };
         });
         setStorageItem("bm_metadata_bookmarks", meta).then(() => {
@@ -955,7 +996,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     const bmsMeta: Record<string, any> = {};
     targetBookmarks.forEach((b) => {
       const newId = oldIdToNewId[b.id] || b.id;
-      bmsMeta[newId] = { tags: b.tags, summary: b.summary };
+      bmsMeta[newId] = { tags: b.tags, summary: b.summary, manuallyAssigned: b.manuallyAssigned || false };
     });
 
     const folsMeta: Record<string, any> = {};
@@ -1068,6 +1109,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
               currentBookmarksMeta[createdBookmark.id] = {
                 tags: bm.tags || [],
                 summary: bm.summary || "",
+                manuallyAssigned: bm.manuallyAssigned || false,
               };
             }
             await setStorageItem("bm_metadata_bookmarks", currentBookmarksMeta);
@@ -1083,6 +1125,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           bookmarksMeta[bm.id] = {
             tags: bm.tags || [],
             summary: bm.summary || "",
+            manuallyAssigned: bm.manuallyAssigned || false,
           };
         });
         setStorageItem("bm_metadata_bookmarks", bookmarksMeta);
@@ -1139,15 +1182,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
+  const addAiFolder = (folder: Folder) => {
+    setAiFolders((prev) => {
+      const next = [...prev, folder];
+      setStorageItem("bm_blueprint_folders", next);
+      return next;
+    });
+  };
+
+  const updateAiFolder = (id: string, updates: Partial<Folder>) => {
+    setAiFolders((prev) => {
+      const next = prev.map((f) => (f.id === id ? { ...f, ...updates } : f));
+      setStorageItem("bm_blueprint_folders", next);
+      return next;
+    });
+  };
+
+  const deleteAiFolder = (id: string) => {
+    setAiFolders((prev) => {
+      const next = prev.filter((f) => f.id !== id && f.parentId !== id);
+      setStorageItem("bm_blueprint_folders", next);
+      return next;
+    });
+  };
+
+  const reloadAiFoldersFromReal = () => {
+    const next = folders.map((rf) => {
+      const existing = aiFolders.find((af) => af.id === rf.id || af.name.toLowerCase() === rf.name.toLowerCase());
+      return {
+        ...rf,
+        promptContext: existing ? existing.promptContext : "",
+      };
+    });
+    setAiFolders(next);
+    setStorageItem("bm_blueprint_folders", next);
+  };
+
   return (
     <AppContext.Provider
       value={{
         bookmarks,
         folders,
+        aiFolders,
         settings,
         history,
         setBookmarks,
         setFolders,
+        setAiFolders,
         setSettings,
         updateBookmark,
         deleteBookmark,
@@ -1157,6 +1238,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         updateFolder,
         addFolder,
         deleteFolder,
+        addAiFolder,
+        updateAiFolder,
+        deleteAiFolder,
+        reloadAiFoldersFromReal,
         revertToState,
         clearHistory,
         injectPresetData,

@@ -188,7 +188,7 @@ export async function summarizeBookmark(
     const res = await fetch("/api/ai/summarize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookmark }),
+      body: JSON.stringify({ bookmark, model: settings.model }),
     });
 
     if (!res.ok) {
@@ -249,7 +249,7 @@ export async function autoSortBookmarks(
     const res = await fetch("/api/ai/auto-sort", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookmarks, folders, systemPrompt }),
+      body: JSON.stringify({ bookmarks, folders, systemPrompt, model: settings.model }),
     });
 
     if (!res.ok) {
@@ -307,7 +307,7 @@ export async function proposeCategories(
     const res = await fetch("/api/ai/propose-category", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookmarks, systemPrompt }),
+      body: JSON.stringify({ bookmarks, systemPrompt, model: settings.model }),
     });
 
     if (!res.ok) {

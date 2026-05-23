@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   Search,
   Sparkles,
@@ -12,6 +12,9 @@ import {
   ExternalLink,
   PlusSquare,
   AlertCircle,
+  Lock,
+  Unlock,
+  StopCircle,
 } from "lucide-react";
 import { useAppContext } from "../store";
 import { Bookmark } from "../types";
@@ -30,6 +33,16 @@ export function BookmarksView() {
   const [selectedFolderFilter, setSelectedFolderFilter] =
     useState<string>("all");
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
+
+  // Bulk Summarize state
+  const [isBulkSummarizing, setIsBulkSummarizing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+  const [showBulkConfirm, setShowBulkConfirm] = useState<{ mode: "unsummarized" | "all" } | null>(null);
+  const bulkAbortRef = useRef(false);
+
+  // Tag editing state
+  const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
+  const [tagInputValue, setTagInputValue] = useState("");
 
   // Manual Add state
   const [isAdding, setIsAdding] = useState(false);
@@ -60,9 +73,10 @@ export function BookmarksView() {
   // Bookmark Metrics
   const metrics = useMemo(() => {
     const total = bookmarks.length;
-    const unsorted = bookmarks.filter((b) => !b.folderId).length;
+    const noFolder = bookmarks.filter((b) => b.folderId === null).length;
+    const locked = bookmarks.filter((b) => b.manuallyAssigned).length;
     const summarized = bookmarks.filter((b) => b.summary !== "").length;
-    return { total, unsorted, summarized };
+    return { total, noFolder, locked, summarized };
   }, [bookmarks]);
 
   // Handle manual addition
@@ -90,6 +104,7 @@ export function BookmarksView() {
       tags,
       summary: "",
       dateAdded: Date.now(),
+      manuallyAssigned: false,
     };
 
     addBookmark(newBookmark);
@@ -122,6 +137,69 @@ export function BookmarksView() {
     } finally {
       setSummarizingId(null);
     }
+  };
+
+  // Bulk Summarize logic
+  const handleBulkSummarize = async (mode: "unsummarized" | "all") => {
+    setIsBulkSummarizing(true);
+    bulkAbortRef.current = false;
+
+    // Filter bookmarks based on mode
+    const targetBookmarks = bookmarks.filter((b) => {
+      if (mode === "unsummarized") {
+        return b.summary === "";
+      }
+      return true; // all
+    });
+
+    const total = targetBookmarks.length;
+    setBulkProgress({ done: 0, total });
+
+    if (total === 0) {
+      setIsBulkSummarizing(false);
+      setShowBulkConfirm(null);
+      return;
+    }
+
+    const batchSize = 3;
+    let doneCount = 0;
+
+    for (let i = 0; i < total; i += batchSize) {
+      if (bulkAbortRef.current) {
+        break;
+      }
+
+      const batch = targetBookmarks.slice(i, i + batchSize);
+      
+      await Promise.all(
+        batch.map(async (bm) => {
+          if (bulkAbortRef.current) return;
+          try {
+            const data = await summarizeBookmark(bm, settings);
+            updateBookmark(bm.id, {
+              summary: data.summary || "Summary generated successfully.",
+              tags: Array.isArray(data.tags) && data.tags.length ? data.tags : [...bm.tags, "ai-generated"],
+            });
+          } catch (e: any) {
+            console.error(`Bulk summarize failed for ${bm.title}:`, e);
+            updateBookmark(bm.id, {
+              summary: `Failsafe Summary for ${bm.title}: expert reference. (Error: ${e.message || "connection failed"})`,
+              tags: [...bm.tags, "failsafe", "ai"],
+            });
+          }
+          doneCount++;
+          setBulkProgress((prev) => ({ ...prev, done: doneCount }));
+        })
+      );
+    }
+
+    setIsBulkSummarizing(false);
+    setShowBulkConfirm(null);
+  };
+
+  const stopBulkSummarize = () => {
+    bulkAbortRef.current = true;
+    setIsBulkSummarizing(false);
   };
 
   const filteredBookmarks = useMemo(() => {
@@ -163,7 +241,7 @@ export function BookmarksView() {
       </div>
 
       {/* MINI STATS CARDS */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
           <span className="text-xs font-semibold text-blue-700 dark:text-blue-400 block uppercase tracking-wider">
             Total Stored
@@ -174,10 +252,18 @@ export function BookmarksView() {
         </div>
         <div className="bg-amber-50/50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30">
           <span className="text-xs font-semibold text-amber-700 dark:text-amber-400 block uppercase tracking-wider">
-            Uncategorised
+            No Folder
           </span>
           <span className="text-2xl font-bold dark:text-white mt-1 block">
-            {metrics.unsorted}
+            {metrics.noFolder}
+          </span>
+        </div>
+        <div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
+          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 block uppercase tracking-wider">
+            Locked (Manual)
+          </span>
+          <span className="text-2xl font-bold dark:text-white mt-1 block">
+            {metrics.locked}
           </span>
         </div>
         <div className="bg-purple-50/50 dark:bg-purple-900/10 p-4 rounded-xl border border-purple-100 dark:border-purple-900/30">
@@ -192,6 +278,109 @@ export function BookmarksView() {
           </span>
         </div>
       </div>
+
+      {/* BULK SUMMARIZE PANEL */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="font-bold text-base dark:text-white flex items-center gap-2">
+              <Sparkles className="text-purple-500" size={18} />
+              Bulk Summarize Bookmarks
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Generate AI summaries and tags in sequential batches of 3.
+            </p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {!isBulkSummarizing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkConfirm({ mode: "unsummarized" })}
+                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Sparkles size={14} />
+                  Summarize Unsummarized ({bookmarks.filter((b) => b.summary === "").length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkConfirm({ mode: "all" })}
+                  className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-850 dark:text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all border border-gray-250 dark:border-gray-700 active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Sparkles size={14} className="text-purple-500" />
+                  Re-summarize All ({bookmarks.length})
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={stopBulkSummarize}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-1.5 cursor-pointer"
+              >
+                <StopCircle size={14} />
+                Stop Processing
+              </button>
+            )}
+          </div>
+        </div>
+
+        {isBulkSummarizing && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs font-medium dark:text-gray-300">
+              <span>Summarizing {bulkProgress.done} of {bulkProgress.total} bookmarks...</span>
+              <span>{bulkProgress.total > 0 ? Math.round((bulkProgress.done / bulkProgress.total) * 100) : 0}%</span>
+            </div>
+            <div className="w-full bg-gray-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-purple-500 to-blue-500 h-full transition-all duration-300"
+                style={{ width: `${bulkProgress.total > 0 ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* BULK CONFIRMATION MODAL */}
+      {showBulkConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 max-w-md w-full shadow-2xl space-y-4">
+            <h3 className="font-bold text-lg dark:text-white flex items-center gap-2">
+              <AlertCircle className="text-amber-500" size={22} />
+              Confirm Bulk AI Summarize
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-350 leading-relaxed">
+              {showBulkConfirm.mode === "unsummarized" ? (
+                <>
+                  You are about to summarize <strong>{bookmarks.filter((b) => b.summary === "").length}</strong> bookmarks that do not have any summaries. Bookmarks with existing summaries will be skipped.
+                </>
+              ) : (
+                <>
+                  You are about to re-summarize <strong>{bookmarks.length}</strong> bookmarks. This will override all existing summaries and tags.
+                </>
+              )}
+            </p>
+            <div className="bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-xl border border-blue-100 dark:border-blue-900/30 text-xs text-blue-800 dark:text-blue-300">
+              Note: This will execute in parallel batches of 3 to respect rate limits. You can cancel the operation at any time.
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkConfirm(null)}
+                className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBulkSummarize(showBulkConfirm.mode)}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-medium px-5 py-2 rounded-xl text-sm transition-all cursor-pointer"
+              >
+                Start Processing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* DRAWER FOR ADDING NEW BOOKMARK */}
       {isAdding && (
@@ -386,12 +575,87 @@ export function BookmarksView() {
                       {bm.tags.map((tag) => (
                         <span
                           key={tag}
-                          onClick={() => setSearch(tag)}
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold cursor-pointer text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-md transition-colors"
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-md transition-colors group/tag relative"
                         >
-                          #{tag}
+                          <span
+                            onClick={() => setSearch(tag)}
+                            className="cursor-pointer hover:underline"
+                          >
+                            #{tag}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const newTags = bm.tags.filter((t) => t !== tag);
+                              updateBookmark(bm.id, { tags: newTags });
+                            }}
+                            className="opacity-0 group-hover/tag:opacity-100 text-gray-400 hover:text-red-500 transition-all ml-1 font-bold text-xs cursor-pointer focus:opacity-100"
+                            title={`Remove tag #${tag}`}
+                          >
+                            ×
+                          </button>
                         </span>
                       ))}
+
+                      {editingTagsId === bm.id ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            const normalized = tagInputValue
+                              .trim()
+                              .toLowerCase()
+                              .replace(/\s+/g, "-");
+                            if (normalized && !bm.tags.includes(normalized)) {
+                              updateBookmark(bm.id, {
+                                tags: [...bm.tags, normalized],
+                              });
+                            }
+                            setEditingTagsId(null);
+                            setTagInputValue("");
+                          }}
+                          className="inline-flex items-center"
+                        >
+                          <input
+                            type="text"
+                            autoFocus
+                            placeholder="Add tag..."
+                            value={tagInputValue}
+                            onChange={(e) => setTagInputValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") {
+                                setEditingTagsId(null);
+                                setTagInputValue("");
+                              }
+                            }}
+                            onBlur={() => {
+                              const normalized = tagInputValue
+                                .trim()
+                                .toLowerCase()
+                                .replace(/\s+/g, "-");
+                              if (normalized && !bm.tags.includes(normalized)) {
+                                updateBookmark(bm.id, {
+                                  tags: [...bm.tags, normalized],
+                                });
+                              }
+                              setEditingTagsId(null);
+                              setTagInputValue("");
+                            }}
+                            className="text-[10px] px-2 py-0.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-white outline-none w-20 focus:ring-1 focus:ring-blue-500"
+                          />
+                        </form>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingTagsId(bm.id);
+                            setTagInputValue("");
+                          }}
+                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors cursor-pointer"
+                        >
+                          ＋ Add tag
+                        </button>
+                      )}
                     </div>
 
                     {/* DYNAMIC SUMMARY DISPLAY */}
@@ -413,18 +677,38 @@ export function BookmarksView() {
                   {/* ACTION CONTROLS */}
                   <div className="flex flex-col sm:flex-row gap-2 self-start flex-shrink-0">
                     <button
+                      type="button"
+                      onClick={() => updateBookmark(bm.id, { manuallyAssigned: !bm.manuallyAssigned })}
+                      className={`p-1.5 rounded-xl transition-all border cursor-pointer ${
+                        bm.manuallyAssigned
+                          ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50 text-emerald-600 dark:text-emerald-400"
+                          : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-650"
+                      }`}
+                      title={bm.manuallyAssigned ? "Locked from AI auto-sort (Click to unlock)" : "Unlocked (Click to lock from AI)"}
+                    >
+                      {bm.manuallyAssigned ? <Lock size={14} /> : <Unlock size={14} />}
+                    </button>
+                    <button
                       onClick={() => handleAISummarize(bm)}
                       disabled={summarizingId === bm.id}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500/10 to-blue-500/10 hover:from-purple-500/20 hover:to-blue-500/20 border border-purple-200/50 dark:border-purple-800/40 text-purple-700 dark:text-purple-300 rounded-xl text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 border rounded-xl text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 ${
+                        hasSummary
+                          ? "bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                          : "bg-gradient-to-r from-purple-500/10 to-blue-500/10 hover:from-purple-500/20 hover:to-blue-500/20 border-purple-200/50 dark:border-purple-800/40 text-purple-700 dark:text-purple-300"
+                      }`}
                       title="Generate summaries using activated large language model"
                     >
                       <Sparkles
                         size={14}
-                        className={
-                          summarizingId === bm.id ? "animate-spin" : ""
-                        }
+                        className={`shrink-0 ${
+                          summarizingId === bm.id
+                            ? "animate-spin"
+                            : hasSummary
+                              ? "text-emerald-500"
+                              : "text-purple-500"
+                        }`}
                       />
-                      {summarizingId === bm.id ? "Processing..." : "Summarize"}
+                      {summarizingId === bm.id ? "Processing..." : hasSummary ? "Re-summarize" : "Summarize"}
                     </button>
                     <button
                       onClick={() => {
