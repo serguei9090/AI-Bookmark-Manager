@@ -1,16 +1,67 @@
 import { Bookmark, Folder, Settings, Proposal } from "../types";
 
-// Helper to clean and parse JSON response from LLMs
 function cleanAndParseJson(text: string): any {
-  let cleaned = text.trim();
-  // Remove markdown code block wrappers if the model returned them
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```[a-zA-Z]*\n/, "");
-    cleaned = cleaned.replace(/```$/, "");
-    cleaned = cleaned.trim();
+  const cleaned = text.trim();
+
+  // 1. Try to parse directly
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    // Ignore and try cleaning
   }
+
+  // 2. Try to extract markdown code blocks if present
+  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+  const match = cleaned.match(codeBlockRegex);
+  if (match && match[1]) {
+    const codeBlockContent = match[1].trim();
+    try {
+      return JSON.parse(codeBlockContent);
+    } catch (e) {
+      // Ignore and fall through
+    }
+  }
+
+  // 3. Fallback: find the first '{' and last '}' (for objects) or first '[' and last ']' (for arrays)
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  const firstBracket = cleaned.indexOf("[");
+  const lastBracket = cleaned.lastIndexOf("]");
+
+  // Try parsing object first if '{' is present and before/after corresponding parts
+  if (firstBrace !== -1 && lastBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    try {
+      const objText = cleaned.substring(firstBrace, lastBrace + 1);
+      return JSON.parse(objText);
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  // Try parsing array if '[' is present
+  if (firstBracket !== -1 && lastBracket !== -1) {
+    try {
+      const arrText = cleaned.substring(firstBracket, lastBracket + 1);
+      return JSON.parse(arrText);
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  // If we haven't succeeded, try the object parsing if we skipped it because '[' was first
+  if (firstBrace !== -1 && lastBrace !== -1 && firstBracket !== -1 && firstBrace > firstBracket) {
+    try {
+      const objText = cleaned.substring(firstBrace, lastBrace + 1);
+      return JSON.parse(objText);
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  // If all fails, throw original parsing error
   return JSON.parse(cleaned);
 }
+
 
 // Get the effective URL and API key based on the provider and settings
 export function getProviderConfig(settings: Settings): {
