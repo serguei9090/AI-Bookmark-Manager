@@ -439,7 +439,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     const encrypted = encryptSettings(settings);
     setStorageItem("bm_settings", encrypted);
-    
+
     if (settings.darkMode) {
       document.documentElement.classList.add("dark");
     } else {

@@ -1,22 +1,29 @@
-import React from 'react';
-import { Trash2, Clock, History, RotateCcw, Database } from 'lucide-react';
-import { useAppContext } from '../store';
+import React from "react";
+import { Trash2, Clock, History, RotateCcw, Database } from "lucide-react";
+import { useAppContext } from "../store";
 
 export function HistoryView() {
   const { history, revertToState, clearHistory } = useAppContext();
 
   const formatTime = (timestamp: number) => {
     const diff = Date.now() - timestamp;
-    if (diff < 60000) return 'Just now';
+    if (diff < 60000) return "Just now";
     const minutes = Math.floor(diff / 60000);
     if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   const handleRevert = (id: string, description: string) => {
-    if (confirm(`Are you sure you want to revert your database to the state: "${description}"?`)) {
+    if (
+      confirm(
+        `Are you sure you want to revert your database to the state: "${description}"?`,
+      )
+    ) {
       revertToState(id);
     }
   };
@@ -30,16 +37,24 @@ export function HistoryView() {
             <History size={30} className="animate-spin-hover" />
           </div>
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">Database Change Logs</h2>
-            <p className="text-gray-500 text-sm mt-1">Rollback and review the last 10 changes to your bookmark vault.</p>
+            <h2 className="text-3xl font-bold tracking-tight">
+              Database Change Logs
+            </h2>
+            <p className="text-gray-500 text-sm mt-1">
+              Rollback and review the last 10 changes to your bookmark vault.
+            </p>
           </div>
         </div>
 
         {history.length > 0 && (
-          <button 
+          <button
             type="button"
             onClick={() => {
-              if (confirm("Are you sure you want to clear your change log history?")) {
+              if (
+                confirm(
+                  "Are you sure you want to clear your change log history?",
+                )
+              ) {
                 clearHistory();
               }
             }}
@@ -55,10 +70,16 @@ export function HistoryView() {
       <div className="flex-1 overflow-y-auto space-y-4 pb-12">
         {history.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 bg-gray-50/50 dark:bg-gray-900/30 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
-            <Database className="text-gray-300 dark:text-gray-700 mb-3" size={48} />
-            <h4 className="font-bold text-gray-800 dark:text-gray-100 text-base">No change logs recorded</h4>
+            <Database
+              className="text-gray-300 dark:text-gray-700 mb-3"
+              size={48}
+            />
+            <h4 className="font-bold text-gray-800 dark:text-gray-100 text-base">
+              No change logs recorded
+            </h4>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xs text-center leading-relaxed">
-              Modifications to your bookmarks or folders will appear here as snapshots. You can revert back anytime.
+              Modifications to your bookmarks or folders will appear here as
+              snapshots. You can revert back anytime.
             </p>
           </div>
         ) : (
@@ -68,11 +89,13 @@ export function HistoryView() {
               return (
                 <div key={entry.id} className="relative group">
                   {/* Timeline point */}
-                  <span className={`absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-900 ${
-                    isCurrent 
-                      ? 'border-blue-600 ring-4 ring-blue-100 dark:ring-blue-900/40' 
-                      : 'border-gray-300 dark:border-gray-700 group-hover:border-blue-500'
-                  }`} />
+                  <span
+                    className={`absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-2 bg-white dark:bg-gray-900 ${
+                      isCurrent
+                        ? "border-blue-600 ring-4 ring-blue-100 dark:ring-blue-900/40"
+                        : "border-gray-300 dark:border-gray-700 group-hover:border-blue-500"
+                    }`}
+                  />
 
                   {/* Card Container */}
                   <div className="bg-white dark:bg-gray-900 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 group-hover:border-blue-300 dark:group-hover:border-blue-900/40 hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -87,7 +110,7 @@ export function HistoryView() {
                           {entry.description}
                         </span>
                       </div>
-                      
+
                       <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                         <span className="flex items-center gap-1">
                           <Clock size={12} />
@@ -109,13 +132,24 @@ export function HistoryView() {
                       onClick={() => handleRevert(entry.id, entry.description)}
                       className={`flex items-center gap-1.5 px-4 py-2 border text-xs font-semibold rounded-xl transition-all cursor-pointer ${
                         isCurrent
-                          ? 'border-gray-200 dark:border-gray-800 text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/50 cursor-not-allowed'
-                          : 'border-blue-200 dark:border-blue-900/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-blue-300 shadow-sm active:scale-95'
+                          ? "border-gray-200 dark:border-gray-800 text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/50 cursor-not-allowed"
+                          : "border-blue-200 dark:border-blue-900/50 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-blue-300 shadow-sm active:scale-95"
                       }`}
                       disabled={isCurrent}
-                      title={isCurrent ? "This is your current state" : "Restore database to this snapshot"}
+                      title={
+                        isCurrent
+                          ? "This is your current state"
+                          : "Restore database to this snapshot"
+                      }
                     >
-                      <RotateCcw size={13} className={isCurrent ? "" : "group-hover:rotate-45 transition-transform"} />
+                      <RotateCcw
+                        size={13}
+                        className={
+                          isCurrent
+                            ? ""
+                            : "group-hover:rotate-45 transition-transform"
+                        }
+                      />
                       Revert State
                     </button>
                   </div>

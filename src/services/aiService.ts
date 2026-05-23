@@ -119,10 +119,14 @@ async function callLlmDirect(
   const { url: baseUrl, apiKey } = getProviderConfig(settings);
 
   if (provider === "gemini" && !apiKey) {
-    throw new Error("Gemini API Key is missing. Please enter your API Key in Settings.");
+    throw new Error(
+      "Gemini API Key is missing. Please enter your API Key in Settings.",
+    );
   }
   if (provider === "openai" && !apiKey) {
-    throw new Error("OpenAI API Key is missing. Please enter your API Key in Settings.");
+    throw new Error(
+      "OpenAI API Key is missing. Please enter your API Key in Settings.",
+    );
   }
 
   if (provider === "gemini") {
