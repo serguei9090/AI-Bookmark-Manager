@@ -257,93 +257,99 @@ export function SettingsView() {
             />
           </div>
         </div>
+
+        {/* Unified AI Generation Parameters & Context */}
+        <div className="space-y-4 pt-4 border-t border-gray-100 dark:border-gray-750">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              System Instructions (Context Injection Prompt)
+            </label>
+            <input
+              type="text"
+              value={settings.systemPrompt}
+              onChange={(e) =>
+                setSettings({ ...settings, systemPrompt: e.target.value })
+              }
+              className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              placeholder="Default: You are an intelligent bookmark manager assistant."
+            />
+            <span className="block text-[11px] text-gray-505 dark:text-gray-400 mt-1">
+              If left empty, a default system context prompt will be automatically used.
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Temperature (Creativity)
+                </label>
+                <span className="text-xs font-mono font-semibold bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-md">
+                  {settings.temperature}
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0.0"
+                max="1.2"
+                step="0.05"
+                value={settings.temperature}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    temperature: parseFloat(e.target.value),
+                  })
+                }
+                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+              />
+              <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                <span>0.0 (Precise)</span>
+                <span>1.2 (Creative)</span>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Max Selection Tokens
+                </label>
+                <span className="text-xs font-mono font-semibold bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-md">
+                  {settings.maxTokens}
+                </span>
+              </div>
+              <input
+                type="range"
+                min="128"
+                max="4096"
+                step="128"
+                value={settings.maxTokens}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    maxTokens: parseInt(e.target.value, 10),
+                  })
+                }
+                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
+              />
+              <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+                <span>128 tokens</span>
+                <span>4096 tokens</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* SECTION 2: System Instructions & Generation Parameters */}
+      {/* SECTION 2: System & History Configuration */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-6">
         <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-700 pb-3">
           <Sliders className="text-purple-500" size={20} />
           <h3 className="font-semibold text-lg dark:text-white">
-            AI Context & Hyperparameters
+            System & History Configuration
           </h3>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            System Instructions (Context Injection Prompt)
-          </label>
-          <textarea
-            rows={3}
-            value={settings.systemPrompt}
-            onChange={(e) =>
-              setSettings({ ...settings, systemPrompt: e.target.value })
-            }
-            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-3 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all text-sm leading-relaxed"
-            placeholder="Tell the model how it should synthesize categories and summarize web references..."
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Temperature (Creativity)
-              </label>
-              <span className="text-xs font-mono font-semibold bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-md">
-                {settings.temperature}
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0.0"
-              max="1.2"
-              step="0.05"
-              value={settings.temperature}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  temperature: parseFloat(e.target.value),
-                })
-              }
-              className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
-            />
-            <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-              <span>0.0 (Precise)</span>
-              <span>1.2 (Creative)</span>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Max Selection Tokens
-              </label>
-              <span className="text-xs font-mono font-semibold bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-md">
-                {settings.maxTokens}
-              </span>
-            </div>
-            <input
-              type="range"
-              min="128"
-              max="4096"
-              step="128"
-              value={settings.maxTokens}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  maxTokens: parseInt(e.target.value, 10),
-                })
-              }
-              className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600"
-            />
-            <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-              <span>128 tokens</span>
-              <span>4096 tokens</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="border-t border-gray-100 dark:border-gray-700/60 pt-4 mt-2">
           <div className="flex justify-between items-center mb-2">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Database History Log Limit (Max Undo Snapshots)
@@ -376,66 +382,6 @@ export function SettingsView() {
             <span>5 entries</span>
             <span>50 entries (default 10)</span>
           </div>
-        </div>
-      </div>
-
-      {/* SECTION 3: Workspace Environment Simulation Mode */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-6">
-        <div className="flex items-center gap-2 border-b border-gray-100 dark:border-gray-700 pb-3">
-          <Layers className="text-emerald-500" size={20} />
-          <h3 className="font-semibold text-lg dark:text-white font-sans">
-            Workspace Screen Simulation
-          </h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <button
-            type="button"
-            onClick={() => setSettings({ ...settings, viewMode: "dashboard" })}
-            className={`flex items-start gap-4 p-4 rounded-xl border transition-all text-left ${
-              settings.viewMode === "dashboard"
-                ? "border-emerald-500 bg-emerald-50/40 dark:bg-emerald-900/10"
-                : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50"
-            }`}
-          >
-            <div
-              className={`p-2 rounded-lg ${settings.viewMode === "dashboard" ? "bg-emerald-600 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-400"}`}
-            >
-              <Laptop size={20} />
-            </div>
-            <div className="flex-1">
-              <span className="block font-semibold text-sm dark:text-white">
-                Web Dashboard Layout
-              </span>
-              <span className="block text-xs text-gray-500 mt-1">
-                Full-screen high-fidelity administrative layout.
-              </span>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSettings({ ...settings, viewMode: "extension" })}
-            className={`flex items-start gap-4 p-4 rounded-xl border transition-all text-left ${
-              settings.viewMode === "extension"
-                ? "border-emerald-500 bg-emerald-50/40 dark:bg-emerald-900/10"
-                : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50"
-            }`}
-          >
-            <div
-              className={`p-2 rounded-lg ${settings.viewMode === "extension" ? "bg-emerald-600 text-white" : "bg-gray-100 dark:bg-gray-700 text-gray-400"}`}
-            >
-              <Layers size={20} />
-            </div>
-            <div className="flex-1">
-              <span className="block font-semibold text-sm dark:text-white">
-                Interactive Chrome Extension Simulator
-              </span>
-              <span className="block text-xs text-gray-500 mt-1">
-                Simulates clicking the Chrome browser toolbar extension icon.
-              </span>
-            </div>
-          </button>
         </div>
       </div>
 

@@ -310,6 +310,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const addBookmark = (bookmark: Bookmark) => {
     if (isExtension) {
+      isReconcilingRef.current = true;
       const parentId = bookmark.folderId || undefined;
       chrome.bookmarks.create(
         {
@@ -318,18 +319,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           url: bookmark.url,
         },
         (created) => {
+          if (!created) {
+            isReconcilingRef.current = false;
+            console.error("Failed to create bookmark:", chrome.runtime.lastError);
+            return;
+          }
           getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
             const meta = currentMeta || {};
             meta[created.id] = {
               tags: bookmark.tags || [],
               summary: bookmark.summary || "",
             };
-            setStorageItem("bm_metadata_bookmarks", meta).then(() => {
+            setStorageItem("bm_metadata_bookmarks", meta).then(async () => {
+              await loadData();
               pushHistory(
                 `Added bookmark: ${bookmark.title}`,
                 bookmarks,
                 folders,
               );
+              isReconcilingRef.current = false;
             });
           });
         },
@@ -363,20 +371,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     pushHistory(`Updated bookmark: ${bm.title}`, bookmarks, folders);
 
     if (isExtension) {
+      isReconcilingRef.current = true;
+      const promises: Promise<any>[] = [];
+
       const title = updates.title !== undefined ? updates.title : undefined;
       const url = updates.url !== undefined ? updates.url : undefined;
 
       if (title !== undefined || url !== undefined) {
-        chrome.bookmarks.update(id, { title, url });
+        promises.push(
+          new Promise<void>((resolve) => {
+            chrome.bookmarks.update(id, { title, url }, () => resolve());
+          })
+        );
       }
 
       if (updates.folderId !== undefined && updates.folderId !== bm.folderId) {
         const parentId = updates.folderId || "1"; // Default to Bookmarks Bar
-        chrome.bookmarks.move(id, { parentId });
+        promises.push(
+          new Promise<void>((resolve) => {
+            chrome.bookmarks.move(id, { parentId }, () => resolve());
+          })
+        );
       }
 
       if (updates.tags !== undefined || updates.summary !== undefined) {
-        getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
+        const metadataPromise = getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
           const meta = currentMeta || {};
           meta[id] = {
             tags:
@@ -386,13 +405,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                 ? updates.summary
                 : meta[id]?.summary || "",
           };
-          setStorageItem("bm_metadata_bookmarks", meta).then(() => {
-            setBookmarks((prev) =>
-              prev.map((b) => (b.id === id ? { ...b, ...updates } : b)),
-            );
-          });
+          return setStorageItem("bm_metadata_bookmarks", meta);
         });
+        promises.push(metadataPromise);
       }
+
+      Promise.all(promises).then(async () => {
+        await loadData();
+        isReconcilingRef.current = false;
+      }).catch((err) => {
+        isReconcilingRef.current = false;
+        console.error("Error updating bookmark:", err);
+      });
     } else {
       getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
         const meta = currentMeta || {};
@@ -418,12 +442,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     pushHistory(`Deleted bookmark: ${bm ? bm.title : id}`, bookmarks, folders);
 
     if (isExtension) {
+      isReconcilingRef.current = true;
       chrome.bookmarks.remove(id, () => {
         getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
-          if (currentMeta && currentMeta[id]) {
-            delete currentMeta[id];
-            setStorageItem("bm_metadata_bookmarks", currentMeta);
-          }
+          const deletePromise = (currentMeta && currentMeta[id])
+            ? (delete currentMeta[id], setStorageItem("bm_metadata_bookmarks", currentMeta))
+            : Promise.resolve();
+          deletePromise.then(async () => {
+            await loadData();
+            isReconcilingRef.current = false;
+          }).catch((err) => {
+            isReconcilingRef.current = false;
+            console.error("Error in deleteBookmark:", err);
+          });
         });
       });
     } else {
@@ -443,6 +474,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   ) => {
     pushHistory(description, bookmarks, folders);
     if (isExtension) {
+      isReconcilingRef.current = true;
+      const promises: Promise<any>[] = [];
+
       getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
         const meta = currentMeta || {};
         newBookmarks.forEach((newBm) => {
@@ -450,15 +484,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           if (!oldBm) return;
 
           if (newBm.title !== oldBm.title || newBm.url !== oldBm.url) {
-            chrome.bookmarks.update(newBm.id, {
-              title: newBm.title,
-              url: newBm.url,
-            });
+            promises.push(
+              new Promise<void>((resolve) => {
+                chrome.bookmarks.update(newBm.id, {
+                  title: newBm.title,
+                  url: newBm.url,
+                }, () => resolve());
+              })
+            );
           }
           if (newBm.folderId !== oldBm.folderId) {
-            chrome.bookmarks.move(newBm.id, {
-              parentId: newBm.folderId || "1",
-            });
+            promises.push(
+              new Promise<void>((resolve) => {
+                chrome.bookmarks.move(newBm.id, {
+                  parentId: newBm.folderId || "1",
+                }, () => resolve());
+              })
+            );
           }
 
           meta[newBm.id] = {
@@ -467,8 +509,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           };
         });
 
-        setStorageItem("bm_metadata_bookmarks", meta).then(() => {
-          setBookmarks(newBookmarks);
+        const storagePromise = setStorageItem("bm_metadata_bookmarks", meta);
+        promises.push(storagePromise);
+
+        Promise.all(promises).then(async () => {
+          await loadData();
+          isReconcilingRef.current = false;
+        }).catch((err) => {
+          isReconcilingRef.current = false;
+          console.error("Error in batchUpdateBookmarks:", err);
         });
       });
     } else {
@@ -490,16 +539,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const bulkDeleteBookmarks = (ids: string[], description: string) => {
     pushHistory(description, bookmarks, folders);
     if (isExtension) {
-      ids.forEach((id) => {
-        chrome.bookmarks.remove(id);
+      isReconcilingRef.current = true;
+      const removePromises = ids.map((id) => {
+        return new Promise<void>((resolve) => {
+          chrome.bookmarks.remove(id, () => resolve());
+        });
       });
-      getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
-        if (currentMeta) {
-          ids.forEach((id) => {
-            delete currentMeta[id];
+
+      Promise.all(removePromises).then(() => {
+        getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
+          const deletePromise = currentMeta
+            ? (ids.forEach((id) => delete currentMeta[id]), setStorageItem("bm_metadata_bookmarks", currentMeta))
+            : Promise.resolve();
+
+          deletePromise.then(async () => {
+            await loadData();
+            isReconcilingRef.current = false;
+          }).catch((err) => {
+            isReconcilingRef.current = false;
+            console.error("Error in bulkDeleteBookmarks:", err);
           });
-          setStorageItem("bm_metadata_bookmarks", currentMeta);
-        }
+        });
       });
     } else {
       getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
@@ -516,19 +576,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const addFolder = (folder: Folder) => {
     if (isExtension) {
+      isReconcilingRef.current = true;
       chrome.bookmarks.create(
         {
           parentId: folder.parentId || "1",
           title: folder.name,
         },
         (created) => {
+          if (!created) {
+            isReconcilingRef.current = false;
+            console.error("Failed to create folder:", chrome.runtime.lastError);
+            return;
+          }
           getStorageItem("bm_metadata_folders").then((currentMeta) => {
             const meta = currentMeta || {};
             meta[created.id] = {
               promptContext: folder.promptContext || "",
             };
-            setStorageItem("bm_metadata_folders", meta).then(() => {
+            setStorageItem("bm_metadata_folders", meta).then(async () => {
+              await loadData();
               pushHistory(`Added folder: ${folder.name}`, bookmarks, folders);
+              isReconcilingRef.current = false;
             });
           });
         },
@@ -557,25 +625,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     pushHistory(`Updated folder: ${fol.name}`, bookmarks, folders);
 
     if (isExtension) {
+      isReconcilingRef.current = true;
+      const promises: Promise<any>[] = [];
+
       if (updates.name !== undefined) {
-        chrome.bookmarks.update(id, { title: updates.name });
+        promises.push(
+          new Promise<void>((resolve) => {
+            chrome.bookmarks.update(id, { title: updates.name }, () => resolve());
+          })
+        );
       }
       if (updates.parentId !== undefined && updates.parentId !== fol.parentId) {
-        chrome.bookmarks.move(id, { parentId: updates.parentId || "1" });
+        promises.push(
+          new Promise<void>((resolve) => {
+            chrome.bookmarks.move(id, { parentId: updates.parentId || "1" }, () => resolve());
+          })
+        );
       }
+
       if (updates.promptContext !== undefined) {
-        getStorageItem("bm_metadata_folders").then((currentMeta) => {
+        const metadataPromise = getStorageItem("bm_metadata_folders").then((currentMeta) => {
           const meta = currentMeta || {};
           meta[id] = {
             promptContext: updates.promptContext || "",
           };
-          setStorageItem("bm_metadata_folders", meta).then(() => {
-            setFolders((prev) =>
-              prev.map((f) => (f.id === id ? { ...f, ...updates } : f)),
-            );
-          });
+          return setStorageItem("bm_metadata_folders", meta);
         });
+        promises.push(metadataPromise);
       }
+
+      Promise.all(promises).then(async () => {
+        await loadData();
+        isReconcilingRef.current = false;
+      }).catch((err) => {
+        isReconcilingRef.current = false;
+        console.error("Error updating folder:", err);
+      });
     } else {
       getStorageItem("bm_metadata_folders").then((currentMeta) => {
         const meta = currentMeta || {};
@@ -600,6 +685,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     pushHistory(`Deleted folder: ${fol.name}`, bookmarks, folders);
 
     if (isExtension) {
+      isReconcilingRef.current = true;
       chrome.bookmarks.getSubTree(id, (results) => {
         if (results && results.length > 0) {
           const folderNode = results[0];
@@ -617,13 +703,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           Promise.all(movePromises).then(() => {
             chrome.bookmarks.remove(id, () => {
               getStorageItem("bm_metadata_folders").then((currentMeta) => {
-                if (currentMeta && currentMeta[id]) {
-                  delete currentMeta[id];
-                  setStorageItem("bm_metadata_folders", currentMeta);
-                }
+                const deletePromise = (currentMeta && currentMeta[id])
+                  ? (delete currentMeta[id], setStorageItem("bm_metadata_folders", currentMeta))
+                  : Promise.resolve();
+                deletePromise.then(async () => {
+                  await loadData();
+                  isReconcilingRef.current = false;
+                }).catch((err) => {
+                  isReconcilingRef.current = false;
+                  console.error("Error in deleteFolder:", err);
+                });
               });
             });
           });
+        } else {
+          isReconcilingRef.current = false;
         }
       });
     } else {

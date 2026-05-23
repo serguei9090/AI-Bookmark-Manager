@@ -494,7 +494,8 @@ export function CategoriesView() {
                         rows={2}
                         value={editPromptContext}
                         onChange={(e) => setEditPromptContext(e.target.value)}
-                        className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-xs dark:text-white"
+                        placeholder="AI prompt context keywords (optional)..."
+                        className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-xs dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
                       />
                       <div className="flex justify-end gap-2">
                         <button
@@ -518,6 +519,13 @@ export function CategoriesView() {
                           <span className="font-bold text-gray-900 dark:text-white text-base">
                             {root.name}
                           </span>
+                          {root.promptContext && (
+                            <Sparkles
+                              size={13}
+                              className="text-purple-500 shrink-0"
+                              title={`AI Context: ${root.promptContext}`}
+                            />
+                          )}
                           <span className="text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-2 py-0.5 rounded font-semibold font-mono">
                             {getBookmarksCount(root.id)} Items
                           </span>
@@ -576,14 +584,14 @@ export function CategoriesView() {
                                   type="text"
                                   value={editName}
                                   onChange={(e) => setEditName(e.target.value)}
-                                  className="w-full bg-white dark:bg-gray-800 border border-gray-350 rounded px-2 py-1 dark:text-white font-bold"
+                                  className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 dark:text-white font-bold"
                                 />
                                 <select
                                   value={editParentId}
                                   onChange={(e) =>
                                     setEditParentId(e.target.value)
                                   }
-                                  className="w-full bg-white border border-gray-350 rounded px-2 py-1 text-xs"
+                                  className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 dark:text-white text-xs outline-none focus:ring-1 focus:ring-blue-500"
                                 >
                                   <option value="root">📁 Root Level</option>
                                   {folders
@@ -600,7 +608,8 @@ export function CategoriesView() {
                                   onChange={(e) =>
                                     setEditPromptContext(e.target.value)
                                   }
-                                  className="w-full bg-white border border-gray-350 rounded px-2 py-1 text-xs"
+                                  placeholder="AI prompt context keywords (optional)..."
+                                  className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-xs dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                                 <div className="flex justify-end gap-2">
                                   <button
@@ -625,6 +634,13 @@ export function CategoriesView() {
                                       <span className="font-semibold text-gray-800 dark:text-gray-200 text-sm">
                                         {sub.name}
                                       </span>
+                                      {sub.promptContext && (
+                                        <Sparkles
+                                          size={11}
+                                          className="text-purple-500 shrink-0"
+                                          title={`AI Context: ${sub.promptContext}`}
+                                        />
+                                      )}
                                       <span className="text-[9px] bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-1.5 py-0.2 rounded font-mono">
                                         {getBookmarksCount(sub.id)}
                                       </span>

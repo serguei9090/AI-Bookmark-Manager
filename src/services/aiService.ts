@@ -222,7 +222,7 @@ Title: ${bookmark.title}`;
 
   const responseText = await callLlmDirect(
     settings,
-    settings.systemPrompt || "You are a helpful bookmark assistant.",
+    settings.systemPrompt || "You are an intelligent bookmark manager assistant.",
     prompt,
     schema,
   );
