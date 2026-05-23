@@ -286,9 +286,10 @@ ${bookmarks.map((b) => `- ID: ${b.id}, URL: ${b.url}, Title: ${b.title}`).join("
           type: "OBJECT",
           properties: {
             bookmarkId: { type: "STRING" },
-            folderId: { 
+            folderId: {
               type: "STRING",
-              description: "The best-matching folder ID, or null / 'null' / empty string if no folder matches."
+              description:
+                "The best-matching folder ID, or null / 'null' / empty string if no folder matches.",
             },
           },
           required: ["bookmarkId", "folderId"],
@@ -305,13 +306,14 @@ ${bookmarks.map((b) => `- ID: ${b.id}, URL: ${b.url}, Title: ${b.title}`).join("
     schema,
   );
   const parsed = cleanAndParseJson(responseText);
-  
+
   const mappingObj: Record<string, string | null> = {};
   if (Array.isArray(parsed.mappings)) {
     parsed.mappings.forEach((item: any) => {
       if (item && item.bookmarkId) {
         const fid = item.folderId;
-        mappingObj[item.bookmarkId] = (fid === null || fid === "null" || fid === "") ? null : fid;
+        mappingObj[item.bookmarkId] =
+          fid === null || fid === "null" || fid === "" ? null : fid;
       }
     });
   }

@@ -123,7 +123,7 @@ type AppContextType = {
   batchUpdateBookmarks: (newBookmarks: Bookmark[], description: string) => void;
   bulkDeleteBookmarks: (ids: string[], description: string) => void;
   updateFolder: (id: string, updates: Partial<Folder>) => void;
-  addFolder: (folder: Folder) => void;
+  addFolder: (folder: Omit<Folder, "id"> & { id?: string }) => Promise<string>;
   deleteFolder: (id: string) => void;
   addAiFolder: (folder: Folder) => void;
   updateAiFolder: (id: string, updates: Partial<Folder>) => void;
@@ -693,49 +693,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const addFolder = (folder: Folder) => {
-    if (isExtension) {
-      isReconcilingRef.current = true;
-      chrome.bookmarks.create(
-        {
-          parentId: safeParentId(folder.parentId),
-          title: folder.name,
-        },
-        (created) => {
-          if (!created) {
-            isReconcilingRef.current = false;
-            console.error("Failed to create folder:", chrome.runtime.lastError);
-            return;
-          }
-          getStorageItem("bm_metadata_folders").then((currentMeta) => {
-            const meta = currentMeta || {};
-            meta[created.id] = {
-              promptContext: folder.promptContext || "",
-            };
-            setStorageItem("bm_metadata_folders", meta).then(async () => {
-              await loadData();
-              pushHistory(`Added folder: ${folder.name}`, bookmarks, folders);
+  const addFolder = (folder: Omit<Folder, "id"> & { id?: string }): Promise<string> => {
+    return new Promise((resolve) => {
+      const folderId = folder.id || crypto.randomUUID();
+      if (isExtension) {
+        isReconcilingRef.current = true;
+        chrome.bookmarks.create(
+          {
+            parentId: safeParentId(folder.parentId),
+            title: folder.name,
+          },
+          (created) => {
+            if (!created) {
               isReconcilingRef.current = false;
+              console.error("Failed to create folder:", chrome.runtime.lastError);
+              resolve("");
+              return;
+            }
+            getStorageItem("bm_metadata_folders").then((currentMeta) => {
+              const meta = currentMeta || {};
+              meta[created.id] = {
+                promptContext: folder.promptContext || "",
+              };
+              setStorageItem("bm_metadata_folders", meta).then(async () => {
+                await loadData();
+                pushHistory(`Added folder: ${folder.name}`, bookmarks, folders);
+                isReconcilingRef.current = false;
+                resolve(created.id);
+              });
             });
-          });
-        },
-      );
-    } else {
-      const newFolder: Folder = {
-        ...folder,
-        id: folder.id || crypto.randomUUID(),
-      };
-      getStorageItem("bm_metadata_folders").then((currentMeta) => {
-        const meta = currentMeta || {};
-        meta[newFolder.id] = {
-          promptContext: newFolder.promptContext || "",
+          },
+        );
+      } else {
+        const newFolder: Folder = {
+          parentId: folder.parentId,
+          name: folder.name,
+          promptContext: folder.promptContext || "",
+          id: folderId,
         };
-        setStorageItem("bm_metadata_folders", meta).then(() => {
-          pushHistory(`Added folder: ${newFolder.name}`, bookmarks, folders);
-          setFolders((prev) => [...prev, newFolder]);
+        getStorageItem("bm_metadata_folders").then((currentMeta) => {
+          const meta = currentMeta || {};
+          meta[newFolder.id] = {
+            promptContext: newFolder.promptContext || "",
+          };
+          setStorageItem("bm_metadata_folders", meta).then(() => {
+            pushHistory(`Added folder: ${newFolder.name}`, bookmarks, folders);
+            setFolders((prev) => [...prev, newFolder]);
+            resolve(newFolder.id);
+          });
         });
-      });
-    }
+      }
+    });
   };
 
   const updateFolder = (id: string, updates: Partial<Folder>) => {

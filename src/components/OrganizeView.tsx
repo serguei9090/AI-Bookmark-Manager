@@ -35,6 +35,7 @@ export function OrganizeView() {
     addFolder,
     updateFolder,
     deleteFolder,
+    deleteBookmark,
     settings,
   } = useAppContext();
 
@@ -113,7 +114,12 @@ export function OrganizeView() {
   };
 
   const getFolderBookmarkCount = (folderId: string): number => {
-    return bookmarks.filter((b) => b.folderId === folderId).length;
+    const getDescendantFolderIds = (fid: string): string[] => {
+      const children = folders.filter((f) => f.parentId === fid);
+      return [fid, ...children.flatMap((c) => getDescendantFolderIds(c.id))];
+    };
+    const allFolderIds = getDescendantFolderIds(folderId);
+    return bookmarks.filter((b) => b.folderId !== null && allFolderIds.includes(b.folderId)).length;
   };
 
   // Helper to map blueprint folder IDs to real Chrome folder IDs by matching names
@@ -342,10 +348,62 @@ export function OrganizeView() {
       let skippedCount = bookmarks.length - targets.length;
 
       if (mapping && Object.keys(mapping).length > 0) {
+        // Collect all unique target AI folder IDs that are NOT null
+        const uniqueAiFolderIds = Array.from(new Set(Object.values(mapping))).filter(Boolean) as string[];
+
+        // We will build a mapping cache of aiFolderId -> realFolderId
+        const aiToRealFolderMap: Record<string, string | null> = {};
+
+        // Recursive resolver that handles parent creation first
+        const resolveOrCreateRealFolder = async (aiId: string | null): Promise<string | null> => {
+          if (!aiId) return null;
+          if (aiToRealFolderMap[aiId] !== undefined) {
+            return aiToRealFolderMap[aiId];
+          }
+
+          const aiFolder = aiFolders.find((f) => f.id === aiId);
+          if (!aiFolder) {
+            aiToRealFolderMap[aiId] = null;
+            return null;
+          }
+
+          // Check if a real folder already exists with the same ID or name (case-insensitive)
+          const existingRealFolder = folders.find(
+            (rf) => rf.id === aiFolder.id || rf.name.toLowerCase() === aiFolder.name.toLowerCase()
+          );
+
+          if (existingRealFolder) {
+            aiToRealFolderMap[aiId] = existingRealFolder.id;
+            return existingRealFolder.id;
+          }
+
+          // If not existing, create it recursively
+          // First resolve the parent ID in reality
+          const realParentId = await resolveOrCreateRealFolder(aiFolder.parentId);
+
+          // Create the folder via the store (which now returns a Promise<string> of the new ID)
+          setSortStatus(`Creating folder "${aiFolder.name}"...`);
+          const newRealFolderId = await addFolder({
+            parentId: realParentId,
+            name: aiFolder.name,
+            promptContext: aiFolder.promptContext || "",
+          });
+
+          aiToRealFolderMap[aiId] = newRealFolderId;
+          return newRealFolderId;
+        };
+
+        // Resolve all unique target folders
+        setSortStatus("Creating missing folders...");
+        for (const aiId of uniqueAiFolderIds) {
+          await resolveOrCreateRealFolder(aiId);
+        }
+
+        // Now map the bookmarks with the resolved real folder IDs
         const updated = bookmarks.map((b) => {
           if (mapping[b.id] !== undefined) {
             const targetAiId = mapping[b.id];
-            const realId = getRealFolderId(targetAiId);
+            const realId = targetAiId ? aiToRealFolderMap[targetAiId] || null : null;
             reorganizedCount++;
             return {
               ...b,
@@ -945,7 +1003,7 @@ export function OrganizeView() {
                 <th className="p-3 w-[60px] text-center">Favicon</th>
                 <th className="p-3">Title & Website Reference</th>
                 <th className="p-3 w-[220px]">Folder Assignment</th>
-                <th className="p-3 w-[80px] text-center">Lock</th>
+                <th className="p-3 w-[110px] text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -1073,32 +1131,47 @@ export function OrganizeView() {
                         </select>
                       </td>
 
-                      {/* Lock Toggle */}
+                      {/* Actions (Lock & Delete) */}
                       <td className="p-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateBookmark(bm.id, {
-                              manuallyAssigned: !bm.manuallyAssigned,
-                            })
-                          }
-                          className={`p-1.5 rounded-lg border cursor-pointer inline-flex items-center justify-center transition-all ${
-                            bm.manuallyAssigned
-                              ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50 text-emerald-600 dark:text-emerald-400"
-                              : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600"
-                          }`}
-                          title={
-                            bm.manuallyAssigned
-                              ? "Locked (AI auto-sort will skip this bookmark)"
-                              : "Unlocked (AI auto-sort will organize this bookmark)"
-                          }
-                        >
-                          {bm.manuallyAssigned ? (
-                            <Lock size={12} />
-                          ) : (
-                            <Unlock size={12} />
-                          )}
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateBookmark(bm.id, {
+                                manuallyAssigned: !bm.manuallyAssigned,
+                              })
+                            }
+                            className={`p-1.5 rounded-lg border cursor-pointer inline-flex items-center justify-center transition-all ${
+                              bm.manuallyAssigned
+                                ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50 text-emerald-600 dark:text-emerald-400"
+                                : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-600"
+                            }`}
+                            title={
+                              bm.manuallyAssigned
+                                ? "Locked (AI auto-sort will skip this bookmark)"
+                                : "Unlocked (AI auto-sort will organize this bookmark)"
+                            }
+                          >
+                            {bm.manuallyAssigned ? (
+                              <Lock size={12} />
+                            ) : (
+                              <Unlock size={12} />
+                            )}
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to delete bookmark "${bm.title}"?`)) {
+                                deleteBookmark(bm.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-400 hover:text-red-650 hover:border-red-200 dark:hover:border-red-950 hover:bg-red-50/50 dark:hover:bg-red-950/30 transition-all cursor-pointer inline-flex items-center justify-center"
+                            title="Delete bookmark"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

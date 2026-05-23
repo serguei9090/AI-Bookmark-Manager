@@ -58,9 +58,10 @@ async function startServer() {
                   type: Type.OBJECT,
                   properties: {
                     bookmarkId: { type: Type.STRING },
-                    folderId: { 
+                    folderId: {
                       type: Type.STRING,
-                      description: "The best-matching folder ID, or null / 'null' / empty string if no folder matches."
+                      description:
+                        "The best-matching folder ID, or null / 'null' / empty string if no folder matches.",
                     },
                   },
                   required: ["bookmarkId", "folderId"],
@@ -74,13 +75,14 @@ async function startServer() {
 
       const jsonStr = response.text || "{}";
       const data = JSON.parse(jsonStr);
-      
+
       const mappingObj: Record<string, string | null> = {};
       if (Array.isArray(data.mappings)) {
         data.mappings.forEach((item: any) => {
           if (item && item.bookmarkId) {
             const fid = item.folderId;
-            mappingObj[item.bookmarkId] = (fid === null || fid === "null" || fid === "") ? null : fid;
+            mappingObj[item.bookmarkId] =
+              fid === null || fid === "null" || fid === "" ? null : fid;
           }
         });
       }
