@@ -96,10 +96,9 @@ export function SimplePopupView() {
         const data = await res.json();
 
         const metaMap: Record<string, { outputTokenLimit?: number }> = {};
-        const modelsList = (data.models || [])
-          .filter((m: any) =>
-            (m.supportedGenerationMethods || []).includes("generateContent"),
-          );
+        const modelsList = (data.models || []).filter((m: any) =>
+          (m.supportedGenerationMethods || []).includes("generateContent"),
+        );
 
         modelsList.forEach((m: any) => {
           const name = (m.name || "").replace(/^models\//, "");
@@ -111,7 +110,9 @@ export function SimplePopupView() {
         setModelMeta(metaMap);
         models = Object.keys(metaMap).sort();
       } else if (localProvider === "openai") {
-        const url = base.endsWith("/v1") ? `${base}/models` : `${base}/v1/models`;
+        const url = base.endsWith("/v1")
+          ? `${base}/models`
+          : `${base}/v1/models`;
         const res = await fetch(url, {
           headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
         });
@@ -503,11 +504,13 @@ export function SimplePopupView() {
 
                 {/* Connection Test Status banner */}
                 {testStatus && (
-                  <div className={`mb-2 flex items-start gap-1.5 text-[10px] border rounded-lg px-2.5 py-1.5 ${
-                    testStatus.type === "success"
-                      ? "text-emerald-750 dark:text-emerald-450 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-250 dark:border-emerald-900/30"
-                      : "text-red-750 dark:text-red-450 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                  }`}>
+                  <div
+                    className={`mb-2 flex items-start gap-1.5 text-[10px] border rounded-lg px-2.5 py-1.5 ${
+                      testStatus.type === "success"
+                        ? "text-emerald-750 dark:text-emerald-450 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-250 dark:border-emerald-900/30"
+                        : "text-red-750 dark:text-red-450 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                    }`}
+                  >
                     <span>{testStatus.type === "success" ? "✓" : "✗"}</span>
                     <span className="break-all">{testStatus.message}</span>
                   </div>
@@ -553,12 +556,14 @@ export function SimplePopupView() {
 
                 {fetchedModels.length === 0 && !fetchError && (
                   <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1">
-                    No models loaded yet — click <strong>Auto-Fetch</strong> to pull live models.
+                    No models loaded yet — click <strong>Auto-Fetch</strong> to
+                    pull live models.
                   </p>
                 )}
                 {fetchedModels.length > 0 && (
                   <p className="text-[9px] text-emerald-600 dark:text-emerald-450 mt-1">
-                    ✓ {fetchedModels.length} model{fetchedModels.length !== 1 ? "s" : ""} loaded
+                    ✓ {fetchedModels.length} model
+                    {fetchedModels.length !== 1 ? "s" : ""} loaded
                   </p>
                 )}
               </div>

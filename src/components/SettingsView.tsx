@@ -300,11 +300,13 @@ export function SettingsView() {
 
             {/* Connection Test Status banner */}
             {testStatus && (
-              <div className={`mb-2 flex items-start gap-2 text-xs border rounded-lg px-3 py-2 ${
-                testStatus.type === "success"
-                  ? "text-emerald-750 dark:text-emerald-450 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-250 dark:border-emerald-900/30"
-                  : "text-red-750 dark:text-red-450 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-              }`}>
+              <div
+                className={`mb-2 flex items-start gap-2 text-xs border rounded-lg px-3 py-2 ${
+                  testStatus.type === "success"
+                    ? "text-emerald-750 dark:text-emerald-450 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-250 dark:border-emerald-900/30"
+                    : "text-red-750 dark:text-red-450 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                }`}
+              >
                 <AlertCircle size={13} className="mt-0.5 shrink-0" />
                 <span>{testStatus.message}</span>
               </div>
