@@ -119,7 +119,9 @@ export function OrganizeView() {
       return [fid, ...children.flatMap((c) => getDescendantFolderIds(c.id))];
     };
     const allFolderIds = getDescendantFolderIds(folderId);
-    return bookmarks.filter((b) => b.folderId !== null && allFolderIds.includes(b.folderId)).length;
+    return bookmarks.filter(
+      (b) => b.folderId !== null && allFolderIds.includes(b.folderId),
+    ).length;
   };
 
   // Helper to map blueprint folder IDs to real Chrome folder IDs by matching names
@@ -349,13 +351,17 @@ export function OrganizeView() {
 
       if (mapping && Object.keys(mapping).length > 0) {
         // Collect all unique target AI folder IDs that are NOT null
-        const uniqueAiFolderIds = Array.from(new Set(Object.values(mapping))).filter(Boolean) as string[];
+        const uniqueAiFolderIds = Array.from(
+          new Set(Object.values(mapping)),
+        ).filter(Boolean) as string[];
 
         // We will build a mapping cache of aiFolderId -> realFolderId
         const aiToRealFolderMap: Record<string, string | null> = {};
 
         // Recursive resolver that handles parent creation first
-        const resolveOrCreateRealFolder = async (aiId: string | null): Promise<string | null> => {
+        const resolveOrCreateRealFolder = async (
+          aiId: string | null,
+        ): Promise<string | null> => {
           if (!aiId) return null;
           if (aiToRealFolderMap[aiId] !== undefined) {
             return aiToRealFolderMap[aiId];
@@ -369,7 +375,9 @@ export function OrganizeView() {
 
           // Check if a real folder already exists with the same ID or name (case-insensitive)
           const existingRealFolder = folders.find(
-            (rf) => rf.id === aiFolder.id || rf.name.toLowerCase() === aiFolder.name.toLowerCase()
+            (rf) =>
+              rf.id === aiFolder.id ||
+              rf.name.toLowerCase() === aiFolder.name.toLowerCase(),
           );
 
           if (existingRealFolder) {
@@ -379,7 +387,9 @@ export function OrganizeView() {
 
           // If not existing, create it recursively
           // First resolve the parent ID in reality
-          const realParentId = await resolveOrCreateRealFolder(aiFolder.parentId);
+          const realParentId = await resolveOrCreateRealFolder(
+            aiFolder.parentId,
+          );
 
           // Create the folder via the store (which now returns a Promise<string> of the new ID)
           setSortStatus(`Creating folder "${aiFolder.name}"...`);
@@ -403,7 +413,9 @@ export function OrganizeView() {
         const updated = bookmarks.map((b) => {
           if (mapping[b.id] !== undefined) {
             const targetAiId = mapping[b.id];
-            const realId = targetAiId ? aiToRealFolderMap[targetAiId] || null : null;
+            const realId = targetAiId
+              ? aiToRealFolderMap[targetAiId] || null
+              : null;
             reorganizedCount++;
             return {
               ...b,
@@ -1158,11 +1170,15 @@ export function OrganizeView() {
                               <Unlock size={12} />
                             )}
                           </button>
-                          
+
                           <button
                             type="button"
                             onClick={() => {
-                              if (window.confirm(`Are you sure you want to delete bookmark "${bm.title}"?`)) {
+                              if (
+                                window.confirm(
+                                  `Are you sure you want to delete bookmark "${bm.title}"?`,
+                                )
+                              ) {
                                 deleteBookmark(bm.id);
                               }
                             }}
@@ -1311,27 +1327,40 @@ export function OrganizeView() {
               )}
             </div>
 
-            <div className="bg-blue-50/50 dark:bg-blue-900/10 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/30 text-xs text-blue-800 dark:text-blue-300">
-              Note: This action uses your configured AI endpoint to evaluate
-              bookmark semantic structure and automatically map them to
-              blueprint categories.
-            </div>
+            {isSorting ? (
+              <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900/40 rounded-xl p-3.5 text-xs text-purple-700 dark:text-purple-300 animate-pulse flex items-center gap-2">
+                <Sparkles size={14} className="animate-spin text-purple-500 shrink-0" />
+                <span className="font-medium">{sortStatus || "AI is organizing your bookmarks..."}</span>
+              </div>
+            ) : (
+              <div className="bg-blue-50/50 dark:bg-blue-900/10 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/30 text-xs text-blue-800 dark:text-blue-300">
+                Note: This action uses your configured AI endpoint to evaluate
+                bookmark semantic structure and automatically map them to
+                blueprint categories.
+              </div>
+            )}
 
             <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setReorganizeConfirm(null)}
-                className="px-4 py-2 text-sm text-gray-500 hover:text-gray-750 dark:text-gray-400 dark:hover:text-gray-200 font-medium cursor-pointer"
+                disabled={isSorting}
+                className="px-4 py-2 text-sm text-gray-500 hover:text-gray-750 dark:text-gray-400 dark:hover:text-gray-200 font-medium cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => executeAIReorganize(reorganizeConfirm.mode)}
-                className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-5 py-2 rounded-xl text-sm transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5"
+                disabled={isSorting}
+                className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-5 py-2 rounded-xl text-sm transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5 disabled:opacity-75 disabled:cursor-not-allowed disabled:transform-none"
               >
-                <Sparkles size={14} />
-                Start AI Sorting
+                {isSorting ? (
+                  <Sparkles size={14} className="animate-spin text-purple-200" />
+                ) : (
+                  <Sparkles size={14} />
+                )}
+                {isSorting ? "AI Sorting..." : "Start AI Sorting"}
               </button>
             </div>
           </div>

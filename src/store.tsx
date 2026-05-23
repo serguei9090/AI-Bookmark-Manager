@@ -693,7 +693,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   };
 
-  const addFolder = (folder: Omit<Folder, "id"> & { id?: string }): Promise<string> => {
+  const addFolder = (
+    folder: Omit<Folder, "id"> & { id?: string },
+  ): Promise<string> => {
     return new Promise((resolve) => {
       const folderId = folder.id || crypto.randomUUID();
       if (isExtension) {
@@ -706,7 +708,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           (created) => {
             if (!created) {
               isReconcilingRef.current = false;
-              console.error("Failed to create folder:", chrome.runtime.lastError);
+              console.error(
+                "Failed to create folder:",
+                chrome.runtime.lastError,
+              );
               resolve("");
               return;
             }
