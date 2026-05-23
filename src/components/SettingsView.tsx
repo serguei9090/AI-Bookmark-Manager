@@ -59,17 +59,82 @@ export function SettingsView() {
   const [modelMeta, setModelMeta] = useState<
     Record<string, { outputTokenLimit?: number }>
   >({});
+  const [isTesting, setIsTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [isCustom, setIsCustom] = useState(false);
 
   // Clear fetched model list when provider changes
   useEffect(() => {
     setFetchedModels([]);
     setFetchError(null);
     setModelMeta({});
+    setTestStatus(null);
+    setIsCustom(false);
   }, [settings.provider]);
+
+  // Sync isCustom with settings.model and fetchedModels changes
+  useEffect(() => {
+    if (fetchedModels.length > 0) {
+      setIsCustom(!fetchedModels.includes(settings.model));
+    }
+  }, [fetchedModels, settings.model]);
 
   const handleSave = () => {
     setLocalSaving(true);
     setTimeout(() => setLocalSaving(false), 600);
+  };
+
+  const handleTestDashboardConnection = async () => {
+    setIsTesting(true);
+    setTestStatus(null);
+    try {
+      const base = resolveBaseUrl(settings);
+      const apiKey = resolveApiKey(settings);
+      let testUrl = "";
+      const headers: Record<string, string> = {};
+
+      if (settings.provider === "gemini") {
+        const isFullUrl = base.includes("/v1");
+        testUrl = isFullUrl
+          ? `${base}/models?key=${apiKey}`
+          : `${base}/v1beta/models?key=${apiKey}`;
+      } else if (settings.provider === "openai") {
+        testUrl = `${base}/models`;
+        if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+      } else if (settings.provider === "ollama") {
+        testUrl = `${base}/api/tags`;
+      } else {
+        testUrl = base.includes("/v1") ? `${base}/models` : `${base}/v1/models`;
+        if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+      }
+
+      const res = await fetch(testUrl, { headers });
+      if (!res.ok) throw new Error(`API returned HTTP ${res.status}`);
+      const data = await res.json();
+
+      if (settings.provider === "ollama") {
+        if (!data.models) throw new Error("Invalid response format");
+      } else if (settings.provider === "gemini") {
+        if (!data.models) throw new Error("Invalid response format");
+      } else {
+        if (!data.data) throw new Error("Invalid response format");
+      }
+
+      setTestStatus({
+        type: "success",
+        message: "Connection successful!",
+      });
+    } catch (err: any) {
+      setTestStatus({
+        type: "error",
+        message: err.message || "Failed to reach endpoint",
+      });
+    } finally {
+      setIsTesting(false);
+    }
   };
 
   const handleFetchModels = async () => {
@@ -208,19 +273,42 @@ export function SettingsView() {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center justify-between">
               <span>Model Selection</span>
-              <button
-                onClick={handleFetchModels}
-                disabled={isFetching}
-                className="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline flex items-center gap-1 disabled:opacity-50"
-                title="Fetch live model list from the configured endpoint"
-              >
-                <RefreshCw
-                  size={12}
-                  className={isFetching ? "animate-spin" : ""}
-                />
-                {isFetching ? "Fetching..." : "Auto-Fetch List"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleTestDashboardConnection}
+                  disabled={isTesting}
+                  className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 dark:text-emerald-450 rounded-lg border border-emerald-250 dark:border-emerald-900/30 transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50 active:scale-95 shadow-sm"
+                >
+                  {isTesting ? "Testing..." : "Test Connection"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFetchModels}
+                  disabled={isFetching}
+                  className="px-2.5 py-1 text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 dark:text-blue-400 rounded-lg border border-blue-200 dark:border-blue-900/30 transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50 active:scale-95 shadow-sm"
+                  title="Fetch live model list from the configured endpoint"
+                >
+                  <RefreshCw
+                    size={12}
+                    className={isFetching ? "animate-spin" : ""}
+                  />
+                  {isFetching ? "Fetching..." : "Auto-Fetch List"}
+                </button>
+              </div>
             </label>
+
+            {/* Connection Test Status banner */}
+            {testStatus && (
+              <div className={`mb-2 flex items-start gap-2 text-xs border rounded-lg px-3 py-2 ${
+                testStatus.type === "success"
+                  ? "text-emerald-750 dark:text-emerald-450 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-250 dark:border-emerald-900/30"
+                  : "text-red-750 dark:text-red-450 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+              }`}>
+                <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                <span>{testStatus.message}</span>
+              </div>
+            )}
 
             {/* Error banner */}
             {fetchError && (
@@ -233,11 +321,17 @@ export function SettingsView() {
             <div className="flex gap-2">
               <select
                 className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all font-mono text-sm"
-                value={settings.model}
+                value={isCustom ? "custom-defined" : settings.model}
                 onChange={(e) => {
                   const mVal = e.target.value;
-                  const limit = modelMeta[mVal]?.outputTokenLimit ?? 0;
-                  setSettings({ ...settings, model: mVal, maxTokens: limit });
+                  if (mVal === "custom-defined") {
+                    setIsCustom(true);
+                    setSettings({ ...settings, model: "" });
+                  } else {
+                    setIsCustom(false);
+                    const limit = modelMeta[mVal]?.outputTokenLimit ?? 0;
+                    setSettings({ ...settings, model: mVal, maxTokens: limit });
+                  }
                 }}
               >
                 {fetchedModels.length === 0 ? (
@@ -259,7 +353,7 @@ export function SettingsView() {
             </div>
 
             {fetchedModels.length === 0 && !fetchError && (
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+              <p className="text-[10px] text-gray-400 dark:text-gray-505 mt-1">
                 No models loaded yet — click <strong>Auto-Fetch List</strong> to
                 pull live models from the endpoint.
               </p>
@@ -273,7 +367,7 @@ export function SettingsView() {
           </div>
         </div>
 
-        {settings.model === "custom-defined" && (
+        {isCustom && (
           <div className="bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900/50">
             <label className="block text-sm font-medium text-blue-900 dark:text-blue-300 mb-2">
               Custom Defined Model Identifier
@@ -281,7 +375,7 @@ export function SettingsView() {
             <input
               type="text"
               placeholder="e.g. llama-3.1-custom-Q4"
-              value={settings.model === "custom-defined" ? "" : settings.model}
+              value={settings.model}
               onChange={(e) =>
                 setSettings({ ...settings, model: e.target.value })
               }

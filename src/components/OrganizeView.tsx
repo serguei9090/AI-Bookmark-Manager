@@ -28,6 +28,21 @@ import { autoSortBookmarks } from "../services/aiService";
 
 const CHROME_ROOT_IDS = new Set(["0", "1", "2", "3"]);
 
+const isProtectedFolder = (folder: FolderType | undefined): boolean => {
+  if (!folder) return false;
+  if (CHROME_ROOT_IDS.has(folder.id)) return true;
+  // Check root level name fallback
+  if (!folder.parentId) {
+    const lowerName = folder.name.toLowerCase();
+    return (
+      lowerName === "other bookmarks" ||
+      lowerName === "bookmarks bar" ||
+      lowerName === "mobile bookmarks"
+    );
+  }
+  return false;
+};
+
 export function OrganizeView() {
   const {
     bookmarks,
@@ -144,7 +159,7 @@ export function OrganizeView() {
   // Find folders that recursively contain 0 bookmarks (excluding Chrome root folders)
   const emptyFolders = useMemo(() => {
     return folders.filter(
-      (f) => !CHROME_ROOT_IDS.has(f.id) && getFolderBookmarkCount(f.id) === 0,
+      (f) => !isProtectedFolder(f) && getFolderBookmarkCount(f.id) === 0,
     );
   }, [folders, getFolderBookmarkCount]);
 
@@ -542,7 +557,7 @@ export function OrganizeView() {
     const isExpanded = !!expandedFolders[node.id];
     const isSelected = selectedFolderFilter === node.id;
     const isFolderEmpty =
-      !CHROME_ROOT_IDS.has(node.id) && getFolderBookmarkCount(node.id) === 0;
+      !isProtectedFolder(node) && getFolderBookmarkCount(node.id) === 0;
 
     return (
       <div key={node.id} className="select-none">
@@ -651,30 +666,34 @@ export function OrganizeView() {
                 <FolderPlus size={12} />
               </button>
               {/* Rename */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setRenamingFolderId(node.id);
-                  setRenamingName(node.name);
-                }}
-                className="p-0.5 hover:text-amber-600 dark:hover:text-amber-400 rounded transition-colors"
-                title="Rename folder"
-              >
-                <Edit3 size={12} />
-              </button>
+              {!isProtectedFolder(node) && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRenamingFolderId(node.id);
+                    setRenamingName(node.name);
+                  }}
+                  className="p-0.5 hover:text-amber-600 dark:hover:text-amber-400 rounded transition-colors"
+                  title="Rename folder"
+                >
+                  <Edit3 size={12} />
+                </button>
+              )}
               {/* Delete */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteFolderConfirm(node.id, node.name);
-                }}
-                className="p-0.5 hover:text-red-500 rounded transition-colors"
-                title="Delete folder"
-              >
-                <Trash2 size={12} />
-              </button>
+              {!isProtectedFolder(node) && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteFolderConfirm(node.id, node.name);
+                  }}
+                  className="p-0.5 hover:text-red-500 rounded transition-colors"
+                  title="Delete folder"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
             </div>
           )}
         </div>
