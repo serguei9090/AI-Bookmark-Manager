@@ -29,7 +29,11 @@ function cleanAndParseJson(text: string): any {
   const lastBracket = cleaned.lastIndexOf("]");
 
   // Try parsing object first if '{' is present and before/after corresponding parts
-  if (firstBrace !== -1 && lastBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+  if (
+    firstBrace !== -1 &&
+    lastBrace !== -1 &&
+    (firstBracket === -1 || firstBrace < firstBracket)
+  ) {
     try {
       const objText = cleaned.substring(firstBrace, lastBrace + 1);
       return JSON.parse(objText);
@@ -49,7 +53,12 @@ function cleanAndParseJson(text: string): any {
   }
 
   // If we haven't succeeded, try the object parsing if we skipped it because '[' was first
-  if (firstBrace !== -1 && lastBrace !== -1 && firstBracket !== -1 && firstBrace > firstBracket) {
+  if (
+    firstBrace !== -1 &&
+    lastBrace !== -1 &&
+    firstBracket !== -1 &&
+    firstBrace > firstBracket
+  ) {
     try {
       const objText = cleaned.substring(firstBrace, lastBrace + 1);
       return JSON.parse(objText);
@@ -61,7 +70,6 @@ function cleanAndParseJson(text: string): any {
   // If all fails, throw original parsing error
   return JSON.parse(cleaned);
 }
-
 
 // Get the effective URL and API key based on the provider and settings
 export function getProviderConfig(settings: Settings): {
