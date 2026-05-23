@@ -26,6 +26,8 @@ import { useAppContext } from "../store";
 import { Bookmark, Folder as FolderType } from "../types";
 import { autoSortBookmarks } from "../services/aiService";
 
+const CHROME_ROOT_IDS = new Set(["0", "1", "2", "3"]);
+
 export function OrganizeView() {
   const {
     bookmarks,
@@ -102,7 +104,13 @@ export function OrganizeView() {
 
   // Reset pagination on filter change
   React.useEffect(() => {
-    if (selectedFolderFilter || search || sortField || filterLock || itemsPerPage) {
+    if (
+      selectedFolderFilter ||
+      search ||
+      sortField ||
+      filterLock ||
+      itemsPerPage
+    ) {
       setCurrentPage(1);
     }
   }, [selectedFolderFilter, search, sortField, filterLock, itemsPerPage]);
@@ -119,20 +127,25 @@ export function OrganizeView() {
     setExpandedFolders((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const getFolderBookmarkCount = useCallback((folderId: string): number => {
-    const getDescendantFolderIds = (fid: string): string[] => {
-      const children = folders.filter((f) => f.parentId === fid);
-      return [fid, ...children.flatMap((c) => getDescendantFolderIds(c.id))];
-    };
-    const allFolderIds = getDescendantFolderIds(folderId);
-    return bookmarks.filter(
-      (b) => b.folderId !== null && allFolderIds.includes(b.folderId),
-    ).length;
-  }, [folders, bookmarks]);
+  const getFolderBookmarkCount = useCallback(
+    (folderId: string): number => {
+      const getDescendantFolderIds = (fid: string): string[] => {
+        const children = folders.filter((f) => f.parentId === fid);
+        return [fid, ...children.flatMap((c) => getDescendantFolderIds(c.id))];
+      };
+      const allFolderIds = getDescendantFolderIds(folderId);
+      return bookmarks.filter(
+        (b) => b.folderId !== null && allFolderIds.includes(b.folderId),
+      ).length;
+    },
+    [folders, bookmarks],
+  );
 
-  // Find folders that recursively contain 0 bookmarks
+  // Find folders that recursively contain 0 bookmarks (excluding Chrome root folders)
   const emptyFolders = useMemo(() => {
-    return folders.filter((f) => getFolderBookmarkCount(f.id) === 0);
+    return folders.filter(
+      (f) => !CHROME_ROOT_IDS.has(f.id) && getFolderBookmarkCount(f.id) === 0,
+    );
   }, [folders, getFolderBookmarkCount]);
 
   // Helper to map blueprint folder IDs to real Chrome folder IDs by matching names
@@ -229,7 +242,15 @@ export function OrganizeView() {
     });
 
     return filtered;
-  }, [bookmarks, search, selectedFolderFilter, filterLock, sortField, folders, parseDomainName]);
+  }, [
+    bookmarks,
+    search,
+    selectedFolderFilter,
+    filterLock,
+    sortField,
+    folders,
+    parseDomainName,
+  ]);
 
   // Pagination Calculations
   const totalItems = displayedBookmarks.length;
@@ -520,7 +541,8 @@ export function OrganizeView() {
       subRealFoldersMap.get(node.id)!.length > 0;
     const isExpanded = !!expandedFolders[node.id];
     const isSelected = selectedFolderFilter === node.id;
-    const isFolderEmpty = getFolderBookmarkCount(node.id) === 0;
+    const isFolderEmpty =
+      !CHROME_ROOT_IDS.has(node.id) && getFolderBookmarkCount(node.id) === 0;
 
     return (
       <div key={node.id} className="select-none">
@@ -828,7 +850,8 @@ export function OrganizeView() {
             <div className="flex items-center justify-between text-xs text-amber-800 dark:text-amber-300">
               <span className="font-semibold flex items-center gap-1.5">
                 <FolderMinus size={14} className="text-amber-500" />
-                {emptyFolders.length} empty {emptyFolders.length === 1 ? "folder" : "folders"}
+                {emptyFolders.length} empty{" "}
+                {emptyFolders.length === 1 ? "folder" : "folders"}
               </span>
             </div>
             <button
@@ -1119,7 +1142,16 @@ export function OrganizeView() {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {isInitialLoading ? (
-                ["sk-1", "sk-2", "sk-3", "sk-4", "sk-5", "sk-6", "sk-7", "sk-8"].map((key) => (
+                [
+                  "sk-1",
+                  "sk-2",
+                  "sk-3",
+                  "sk-4",
+                  "sk-5",
+                  "sk-6",
+                  "sk-7",
+                  "sk-8",
+                ].map((key) => (
                   <tr
                     key={key}
                     className="animate-pulse border-b border-gray-100 dark:border-gray-800"

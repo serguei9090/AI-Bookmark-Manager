@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
 import { Bookmark, Folder, Settings, Proposal, HistoryEntry } from "./types";
 
 // Initial Data
@@ -179,21 +185,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     return saved ? JSON.parse(saved) : [];
   });
 
-  const initializeHistoryIfEmpty = useCallback((bms: Bookmark[], fols: Folder[]) => {
-    setHistory((prev) => {
-      if (prev.length === 0) {
-        const entry: HistoryEntry = {
-          id: crypto.randomUUID(),
-          bookmarks: bms,
-          folders: fols,
-          timestamp: Date.now(),
-          description: "System initialized (Startup)",
-        };
-        return [entry];
-      }
-      return prev;
-    });
-  }, []);
+  const initializeHistoryIfEmpty = useCallback(
+    (bms: Bookmark[], fols: Folder[]) => {
+      setHistory((prev) => {
+        if (prev.length === 0) {
+          const entry: HistoryEntry = {
+            id: crypto.randomUUID(),
+            bookmarks: bms,
+            folders: fols,
+            timestamp: Date.now(),
+            description: "System initialized (Startup)",
+          };
+          return [entry];
+        }
+        return prev;
+      });
+    },
+    [],
+  );
 
   // Async data loader for extension / metadata merge
   const loadData = useCallback(async () => {
@@ -551,7 +560,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           let deletePromise = Promise.resolve();
           if (currentMeta && currentMeta[id]) {
             delete currentMeta[id];
-            deletePromise = setStorageItem("bm_metadata_bookmarks", currentMeta);
+            deletePromise = setStorageItem(
+              "bm_metadata_bookmarks",
+              currentMeta,
+            );
           }
           deletePromise
             .then(async () => {
@@ -845,7 +857,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
                 let deletePromise = Promise.resolve();
                 if (currentMeta && currentMeta[id]) {
                   delete currentMeta[id];
-                  deletePromise = setStorageItem("bm_metadata_folders", currentMeta);
+                  deletePromise = setStorageItem(
+                    "bm_metadata_folders",
+                    currentMeta,
+                  );
                 }
                 deletePromise
                   .then(async () => {
@@ -873,7 +888,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         setFolders((prev) =>
           prev
             .filter((f) => f.id !== id)
-            .map((f) => (f.parentId === id ? { ...f, parentId: fol.parentId } : f))
+            .map((f) =>
+              f.parentId === id ? { ...f, parentId: fol.parentId } : f,
+            ),
         );
         setBookmarks((prev) =>
           prev.map((b) => (b.folderId === id ? { ...b, folderId: null } : b)),
@@ -932,8 +949,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         setFolders((prev) => prev.filter((f) => !ids.includes(f.id)));
         setBookmarks((prev) =>
           prev.map((b) =>
-            b.folderId && ids.includes(b.folderId) ? { ...b, folderId: null } : b
-          )
+            b.folderId && ids.includes(b.folderId)
+              ? { ...b, folderId: null }
+              : b,
+          ),
         );
       });
     }
