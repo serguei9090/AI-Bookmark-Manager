@@ -10,7 +10,7 @@ console.log("🚀 Starting Chrome Extension compilation...");
 try {
 	// 1. Run standard Vite build
 	console.log("📦 Bundling React assets with Vite...");
-	execSync("npm run build", { cwd: rootDir, stdio: "inherit" });
+	execSync("bun run build", { cwd: rootDir, stdio: "inherit" });
 	console.log("✓ Vite build completed successfully.");
 
 	// 2. Generate Manifest V3 manifest.json

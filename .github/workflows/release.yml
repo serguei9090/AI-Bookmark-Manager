@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Chrome Extension
+        run: bun run build:extension
+
+      - name: Create extension ZIP
+        run: |
+          cd dist
+          zip -r "../ai-bookmark-manager-${{ github.ref_name }}.zip" .
+          cd ..
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "AI Bookmark Manager ${{ github.ref_name }}"
+          body: |
+            ## AI Bookmark Manager ${{ github.ref_name }}
+
+            ### Installation
+            1. Download `ai-bookmark-manager-${{ github.ref_name }}.zip` below.
+            2. Unzip the file.
+            3. Open Chrome → `chrome://extensions` → enable **Developer mode**.
+            4. Click **Load unpacked** and select the unzipped folder.
+
+            ---
+            Auto-generated from commit history.
+          generate_release_notes: true
+          files: ai-bookmark-manager-${{ github.ref_name }}.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
