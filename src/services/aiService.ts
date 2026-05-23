@@ -268,7 +268,7 @@ export async function autoSortBookmarks(
 
   // Otherwise, invoke directly
   const prompt = `You are an expert bookmark organizer. Please categorize these bookmarks into the provided folders.
-Return a JSON object with a single key "mapping" containing a mapping where each key is a bookmark ID and the value is the best-matching folder ID (or null if no folder matches).
+Return a JSON object with a single key "mappings" containing a list of mappings, where each mapping links a bookmarkId to the best-matching folderId. If no good folder matches, use null.
 
 Folders:
 ${folders.map((f) => `- ID: ${f.id}, Name: ${f.name}, Context: ${f.promptContext}`).join("\n")}
@@ -279,14 +279,23 @@ ${bookmarks.map((b) => `- ID: ${b.id}, URL: ${b.url}, Title: ${b.title}`).join("
   const schema = {
     type: "OBJECT",
     properties: {
-      mapping: {
-        type: "OBJECT",
-        description:
-          "Mapping where key is bookmark ID and value is the best folder ID.",
-        additionalProperties: { type: "STRING" },
+      mappings: {
+        type: "ARRAY",
+        description: "List of bookmark folder mappings.",
+        items: {
+          type: "OBJECT",
+          properties: {
+            bookmarkId: { type: "STRING" },
+            folderId: { 
+              type: "STRING",
+              description: "The best-matching folder ID, or null / 'null' / empty string if no folder matches."
+            },
+          },
+          required: ["bookmarkId", "folderId"],
+        },
       },
     },
-    required: ["mapping"],
+    required: ["mappings"],
   };
 
   const responseText = await callLlmDirect(
@@ -296,7 +305,17 @@ ${bookmarks.map((b) => `- ID: ${b.id}, URL: ${b.url}, Title: ${b.title}`).join("
     schema,
   );
   const parsed = cleanAndParseJson(responseText);
-  return parsed.mapping || {};
+  
+  const mappingObj: Record<string, string | null> = {};
+  if (Array.isArray(parsed.mappings)) {
+    parsed.mappings.forEach((item: any) => {
+      if (item && item.bookmarkId) {
+        const fid = item.folderId;
+        mappingObj[item.bookmarkId] = (fid === null || fid === "null" || fid === "") ? null : fid;
+      }
+    });
+  }
+  return mappingObj;
 }
 
 export async function proposeCategories(

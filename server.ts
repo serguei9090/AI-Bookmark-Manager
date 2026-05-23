@@ -40,7 +40,7 @@ async function startServer() {
         Bookmarks:
         ${bookmarks.map((b: any) => `- ID: ${b.id}, URL: ${b.url}, Title: ${b.title}`).join("\n")}
         
-        Return a JSON mapping of bookmark IDs to the best-matching folder ID. If no good match, use null.
+        Return a JSON list of mappings, where each mapping links a bookmarkId to the best-matching folderId. If no good folder matches, use null.
       `;
 
       const response = await ai.models.generateContent({
@@ -51,21 +51,40 @@ async function startServer() {
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              mapping: {
-                type: Type.OBJECT,
-                description:
-                  "Mapping where key is bookmark ID and value is the best folder ID.",
-                additionalProperties: { type: Type.STRING },
+              mappings: {
+                type: Type.ARRAY,
+                description: "List of bookmark folder mappings.",
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    bookmarkId: { type: Type.STRING },
+                    folderId: { 
+                      type: Type.STRING,
+                      description: "The best-matching folder ID, or null / 'null' / empty string if no folder matches."
+                    },
+                  },
+                  required: ["bookmarkId", "folderId"],
+                },
               },
             },
-            required: ["mapping"],
+            required: ["mappings"],
           },
         },
       });
 
       const jsonStr = response.text || "{}";
       const data = JSON.parse(jsonStr);
-      res.json({ success: true, mapping: data.mapping });
+      
+      const mappingObj: Record<string, string | null> = {};
+      if (Array.isArray(data.mappings)) {
+        data.mappings.forEach((item: any) => {
+          if (item && item.bookmarkId) {
+            const fid = item.folderId;
+            mappingObj[item.bookmarkId] = (fid === null || fid === "null" || fid === "") ? null : fid;
+          }
+        });
+      }
+      res.json({ success: true, mapping: mappingObj });
     } catch (error: any) {
       console.error("AI Sort Error:", error);
       res.status(500).json({ success: false, error: error.message });
