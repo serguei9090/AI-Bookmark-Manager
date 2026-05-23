@@ -6,12 +6,9 @@ import {
   Edit2,
   Trash,
   HelpCircle,
-  Save,
   XCircle,
   Check,
-  ArrowRight,
   CornerDownRight,
-  FileText,
 } from "lucide-react";
 import { useAppContext } from "../store";
 import { Folder } from "../types";

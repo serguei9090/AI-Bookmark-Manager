@@ -23,14 +23,18 @@ try {
     action: {
       "default_popup": "index.html?popup=true"
     },
+    icons: {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
     permissions: [
       "storage",
       "bookmarks"
     ],
     host_permissions: [
-      "https://*.googleapis.com/*",
-      "https://api.openai.com/*",
-      "http://localhost:*/"
+      "https://generativelanguage.googleapis.com/*",
+      "https://api.openai.com/*"
     ]
   };
 

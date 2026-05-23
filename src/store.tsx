@@ -38,6 +38,59 @@ const initialSettings: Settings = {
 const isExtension =
   typeof chrome !== "undefined" && chrome.bookmarks !== undefined;
 
+const ENCRYPTION_KEY = "nano_banana_salt_2026";
+
+function encryptApiKey(text: string): string {
+  if (!text) return "";
+  let result = "";
+  for (let i = 0; i < text.length; i++) {
+    const charCode = text.charCodeAt(i);
+    const keyChar = ENCRYPTION_KEY.charCodeAt(i % ENCRYPTION_KEY.length);
+    result += String.fromCharCode(charCode ^ keyChar);
+  }
+  return btoa(unescape(encodeURIComponent(result)));
+}
+
+function decryptApiKey(cipherText: string): string {
+  if (!cipherText) return "";
+  try {
+    const decoded = decodeURIComponent(escape(atob(cipherText)));
+    let result = "";
+    for (let i = 0; i < decoded.length; i++) {
+      const charCode = decoded.charCodeAt(i);
+      const keyChar = ENCRYPTION_KEY.charCodeAt(i % ENCRYPTION_KEY.length);
+      result += String.fromCharCode(charCode ^ keyChar);
+    }
+    return result;
+  } catch (e) {
+    return cipherText;
+  }
+}
+
+function encryptSettings(s: Settings): Settings {
+  return {
+    ...s,
+    geminiApiKey: encryptApiKey(s.geminiApiKey || ""),
+    openaiApiKey: encryptApiKey(s.openaiApiKey || ""),
+    ollamaApiKey: encryptApiKey(s.ollamaApiKey || ""),
+    lmstudioApiKey: encryptApiKey(s.lmstudioApiKey || ""),
+    customApiKey: encryptApiKey(s.customApiKey || ""),
+    apiKey: encryptApiKey(s.apiKey || ""),
+  };
+}
+
+function decryptSettings(s: Settings): Settings {
+  return {
+    ...s,
+    geminiApiKey: decryptApiKey(s.geminiApiKey || ""),
+    openaiApiKey: decryptApiKey(s.openaiApiKey || ""),
+    ollamaApiKey: decryptApiKey(s.ollamaApiKey || ""),
+    lmstudioApiKey: decryptApiKey(s.lmstudioApiKey || ""),
+    customApiKey: decryptApiKey(s.customApiKey || ""),
+    apiKey: decryptApiKey(s.apiKey || ""),
+  };
+}
+
 // Chrome-protected root bookmark node IDs — never modify these directly
 const CHROME_ROOT_IDS = new Set(["0", "1", "2", "3"]);
 
@@ -166,13 +219,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [aiFolders, setAiFolders] = useState<Folder[]>([]);
 
   const [settings, setSettings] = useState<Settings>(() => {
-    const saved = localStorage.getItem("bm_settings");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return { ...initialSettings, ...parsed };
-      } catch (e) {
-        return initialSettings;
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("bm_settings");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return decryptSettings({ ...initialSettings, ...parsed });
+        } catch (e) {
+          return initialSettings;
+        }
       }
     }
     return initialSettings;
@@ -367,8 +422,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [folders]);
 
+  // Load settings and history asynchronously on mount for both extension and web
   useEffect(() => {
-    localStorage.setItem("bm_settings", JSON.stringify(settings));
+    getStorageItem("bm_settings").then((savedSettings) => {
+      if (savedSettings) {
+        setSettings(decryptSettings(savedSettings));
+      }
+    });
+    getStorageItem("bm_history").then((savedHistory) => {
+      if (savedHistory) {
+        setHistory(savedHistory);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    const encrypted = encryptSettings(settings);
+    setStorageItem("bm_settings", encrypted);
+    
     if (settings.darkMode) {
       document.documentElement.classList.add("dark");
     } else {
@@ -377,7 +448,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [settings]);
 
   useEffect(() => {
-    localStorage.setItem("bm_history", JSON.stringify(history));
+    setStorageItem("bm_history", history);
   }, [history]);
 
   const pushHistory = (

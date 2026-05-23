@@ -457,7 +457,7 @@ export function SimplePopupView() {
                   type="password"
                   placeholder={
                     localProvider === "gemini"
-                      ? "Optional (if blank, falls back to local server /api/ai proxy)"
+                      ? "Enter your Gemini API key..."
                       : localProvider === "ollama" ||
                           localProvider === "lmstudio"
                         ? "Optional for local servers"

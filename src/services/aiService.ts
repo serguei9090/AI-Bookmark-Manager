@@ -118,6 +118,13 @@ async function callLlmDirect(
   const { provider, model, temperature, maxTokens } = settings;
   const { url: baseUrl, apiKey } = getProviderConfig(settings);
 
+  if (provider === "gemini" && !apiKey) {
+    throw new Error("Gemini API Key is missing. Please enter your API Key in Settings.");
+  }
+  if (provider === "openai" && !apiKey) {
+    throw new Error("OpenAI API Key is missing. Please enter your API Key in Settings.");
+  }
+
   if (provider === "gemini") {
     // Direct Gemini API call
     const cleanBaseUrl = baseUrl.replace(/\/$/, "");
@@ -242,27 +249,6 @@ export async function summarizeBookmark(
   bookmark: Bookmark,
   settings: Settings,
 ): Promise<{ summary: string; tags: string[] }> {
-  // If provider is Gemini and no API key is set, fallback to the local server proxy
-  if (settings.provider === "gemini" && !settings.geminiApiKey) {
-    const res = await fetch("/api/ai/summarize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookmark, model: settings.model }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || "Failed to summarize bookmark via proxy");
-    }
-
-    const data = await res.json();
-    return {
-      summary: data.summary || "",
-      tags: data.tags || [],
-    };
-  }
-
-  // Otherwise, invoke directly
   const prompt = `Provide a concise 1-2 sentence summary and max 5 tags for this bookmark. Return a JSON object with keys "summary" (string) and "tags" (array of strings).
 URL: ${bookmark.url}
 Title: ${bookmark.title}`;
@@ -303,29 +289,6 @@ export async function autoSortBookmarks(
     settings.systemPrompt ||
     "You are an intelligent bookmark manager assistant.";
 
-  // If provider is Gemini and no API key is set, fallback to the local server proxy
-  if (settings.provider === "gemini" && !settings.geminiApiKey) {
-    const res = await fetch("/api/ai/auto-sort", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bookmarks,
-        folders,
-        systemPrompt,
-        model: settings.model,
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || "Failed to auto-sort bookmarks via proxy");
-    }
-
-    const data = await res.json();
-    return data.mapping || {};
-  }
-
-  // Otherwise, invoke directly
   const prompt = `You are an expert bookmark organizer. Please categorize these bookmarks into the provided folders.
 Return a JSON object with a single key "mappings" containing a list of mappings, where each mapping links a bookmarkId to the best-matching folderId. If no good folder matches, use null.
 
@@ -387,24 +350,6 @@ export async function proposeCategories(
     settings.systemPrompt ||
     "You are an intelligent bookmark manager assistant.";
 
-  // If provider is Gemini and no API key is set, fallback to the local server proxy
-  if (settings.provider === "gemini" && !settings.geminiApiKey) {
-    const res = await fetch("/api/ai/propose-category", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookmarks, systemPrompt, model: settings.model }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || "Failed to propose categories via proxy");
-    }
-
-    const data = await res.json();
-    return data.proposals || [];
-  }
-
-  // Otherwise, invoke directly
   const prompt = `You are an expert bookmark organizer. Analyze these bookmarks and propose a set of logical folder categories for them.
 Return a JSON object with a single key "proposals" containing an array of proposed folder categories. Each category must have a "name" (string) and "promptContext" (string, a brief context describing what type of sites go here).
 

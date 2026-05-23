@@ -2,13 +2,9 @@ import React, { useState, useMemo, useRef } from "react";
 import {
   Search,
   Sparkles,
-  Tag,
   Folder as FolderIcon,
   Trash,
   Globe,
-  MapPin,
-  CheckCircle,
-  HelpCircle,
   ExternalLink,
   PlusSquare,
   AlertCircle,

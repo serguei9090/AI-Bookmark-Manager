@@ -1,5 +1,5 @@
 import React from 'react';
-import { RefreshCw, Trash2, Clock, Check, History, RotateCcw, Database } from 'lucide-react';
+import { Trash2, Clock, History, RotateCcw, Database } from 'lucide-react';
 import { useAppContext } from '../store';
 
 export function HistoryView() {

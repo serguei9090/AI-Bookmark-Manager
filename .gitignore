@@ -11,3 +11,6 @@ coverage/
 .kilo/
 IINSTRUCTIONS.md
 .kilocodeignore
+.codanna/
+.fastembed_cache
+.codannaignore

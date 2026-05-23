@@ -1,7 +1,6 @@
 import React from "react";
 import {
   BookmarkIcon,
-  FolderTree,
   Settings,
   Copy,
   Bot,

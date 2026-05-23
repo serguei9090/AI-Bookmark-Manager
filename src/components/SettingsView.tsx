@@ -464,7 +464,7 @@ export function SettingsView() {
               type="password"
               placeholder={
                 settings.provider === "gemini"
-                  ? "Optional (if blank, falls back to local server /api/ai proxy)"
+                  ? "Enter your Gemini API key..."
                   : settings.provider === "ollama" ||
                       settings.provider === "lmstudio"
                     ? "Optional for local servers"
