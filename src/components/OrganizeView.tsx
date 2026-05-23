@@ -1329,8 +1329,13 @@ export function OrganizeView() {
 
             {isSorting ? (
               <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-900/40 rounded-xl p-3.5 text-xs text-purple-700 dark:text-purple-300 animate-pulse flex items-center gap-2">
-                <Sparkles size={14} className="animate-spin text-purple-500 shrink-0" />
-                <span className="font-medium">{sortStatus || "AI is organizing your bookmarks..."}</span>
+                <Sparkles
+                  size={14}
+                  className="animate-spin text-purple-500 shrink-0"
+                />
+                <span className="font-medium">
+                  {sortStatus || "AI is organizing your bookmarks..."}
+                </span>
               </div>
             ) : (
               <div className="bg-blue-50/50 dark:bg-blue-900/10 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/30 text-xs text-blue-800 dark:text-blue-300">
@@ -1356,7 +1361,10 @@ export function OrganizeView() {
                 className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-5 py-2 rounded-xl text-sm transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-1.5 disabled:opacity-75 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {isSorting ? (
-                  <Sparkles size={14} className="animate-spin text-purple-200" />
+                  <Sparkles
+                    size={14}
+                    className="animate-spin text-purple-200"
+                  />
                 ) : (
                   <Sparkles size={14} />
                 )}

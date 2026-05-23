@@ -338,16 +338,23 @@ export function CategoriesView() {
           <div
             style={{ marginLeft: `${depth > 0 ? 12 : 0}px` }}
             className={`flex items-start justify-between group py-2 px-3 border border-gray-100 dark:border-gray-700/50 rounded-xl hover:border-gray-200 dark:hover:border-gray-700 hover:bg-gray-50/50 dark:hover:bg-gray-850/10 transition-all ${
-              depth === 0 ? "bg-white dark:bg-gray-800" : "bg-gray-50/30 dark:bg-gray-900/10"
+              depth === 0
+                ? "bg-white dark:bg-gray-800"
+                : "bg-gray-50/30 dark:bg-gray-900/10"
             }`}
           >
             <div className="flex items-start gap-2 min-w-0">
               {depth > 0 && (
-                <CornerDownRight size={14} className="text-gray-400 mt-1 shrink-0" />
+                <CornerDownRight
+                  size={14}
+                  className="text-gray-400 mt-1 shrink-0"
+                />
               )}
               <div className="space-y-0.5 min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className={`font-semibold text-gray-805 dark:text-gray-200 ${depth === 0 ? "font-bold text-base text-gray-900 dark:text-white" : "text-xs"}`}>
+                  <span
+                    className={`font-semibold text-gray-805 dark:text-gray-200 ${depth === 0 ? "font-bold text-base text-gray-900 dark:text-white" : "text-xs"}`}
+                  >
                     {node.name}
                   </span>
                   {node.promptContext && (
@@ -357,7 +364,9 @@ export function CategoriesView() {
                       title={`AI Context: ${node.promptContext}`}
                     />
                   )}
-                  <span className={`bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-1.5 py-0.5 rounded font-semibold font-mono ${depth === 0 ? "text-[10px]" : "text-[9px]"}`}>
+                  <span
+                    className={`bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-1.5 py-0.5 rounded font-semibold font-mono ${depth === 0 ? "text-[10px]" : "text-[9px]"}`}
+                  >
                     {getBookmarksCount(node.id)} Items
                   </span>
                 </div>
@@ -406,7 +415,10 @@ export function CategoriesView() {
             style={{ marginLeft: `${(depth + 1) * 12}px` }}
             className="flex items-start gap-2 animate-fade-in pr-2 mt-1"
           >
-            <CornerDownRight size={12} className="text-gray-400 mt-1 shrink-0" />
+            <CornerDownRight
+              size={12}
+              className="text-gray-400 mt-1 shrink-0"
+            />
             <div className="flex-1 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-dashed border-gray-200 dark:border-gray-750 max-w-md space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-450 block">
                 New Subcategory under {node.name}
