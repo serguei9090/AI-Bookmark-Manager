@@ -37,7 +37,9 @@ export function BookmarksView() {
   // Bulk Summarize state
   const [isBulkSummarizing, setIsBulkSummarizing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
-  const [showBulkConfirm, setShowBulkConfirm] = useState<{ mode: "unsummarized" | "all" } | null>(null);
+  const [showBulkConfirm, setShowBulkConfirm] = useState<{
+    mode: "unsummarized" | "all";
+  } | null>(null);
   const bulkAbortRef = useRef(false);
 
   // Tag editing state
@@ -170,7 +172,7 @@ export function BookmarksView() {
       }
 
       const batch = targetBookmarks.slice(i, i + batchSize);
-      
+
       await Promise.all(
         batch.map(async (bm) => {
           if (bulkAbortRef.current) return;
@@ -178,7 +180,10 @@ export function BookmarksView() {
             const data = await summarizeBookmark(bm, settings);
             updateBookmark(bm.id, {
               summary: data.summary || "Summary generated successfully.",
-              tags: Array.isArray(data.tags) && data.tags.length ? data.tags : [...bm.tags, "ai-generated"],
+              tags:
+                Array.isArray(data.tags) && data.tags.length
+                  ? data.tags
+                  : [...bm.tags, "ai-generated"],
             });
           } catch (e: any) {
             console.error(`Bulk summarize failed for ${bm.title}:`, e);
@@ -189,7 +194,7 @@ export function BookmarksView() {
           }
           doneCount++;
           setBulkProgress((prev) => ({ ...prev, done: doneCount }));
-        })
+        }),
       );
     }
 
@@ -300,7 +305,8 @@ export function BookmarksView() {
                   className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-all shadow-sm active:scale-95 flex items-center gap-1.5 cursor-pointer"
                 >
                   <Sparkles size={14} />
-                  Summarize Unsummarized ({bookmarks.filter((b) => b.summary === "").length})
+                  Summarize Unsummarized (
+                  {bookmarks.filter((b) => b.summary === "").length})
                 </button>
                 <button
                   type="button"
@@ -327,13 +333,23 @@ export function BookmarksView() {
         {isBulkSummarizing && (
           <div className="space-y-2">
             <div className="flex justify-between text-xs font-medium dark:text-gray-300">
-              <span>Summarizing {bulkProgress.done} of {bulkProgress.total} bookmarks...</span>
-              <span>{bulkProgress.total > 0 ? Math.round((bulkProgress.done / bulkProgress.total) * 100) : 0}%</span>
+              <span>
+                Summarizing {bulkProgress.done} of {bulkProgress.total}{" "}
+                bookmarks...
+              </span>
+              <span>
+                {bulkProgress.total > 0
+                  ? Math.round((bulkProgress.done / bulkProgress.total) * 100)
+                  : 0}
+                %
+              </span>
             </div>
             <div className="w-full bg-gray-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
               <div
                 className="bg-gradient-to-r from-purple-500 to-blue-500 h-full transition-all duration-300"
-                style={{ width: `${bulkProgress.total > 0 ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%` }}
+                style={{
+                  width: `${bulkProgress.total > 0 ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%`,
+                }}
               />
             </div>
           </div>
@@ -351,16 +367,24 @@ export function BookmarksView() {
             <p className="text-sm text-gray-600 dark:text-gray-350 leading-relaxed">
               {showBulkConfirm.mode === "unsummarized" ? (
                 <>
-                  You are about to summarize <strong>{bookmarks.filter((b) => b.summary === "").length}</strong> bookmarks that do not have any summaries. Bookmarks with existing summaries will be skipped.
+                  You are about to summarize{" "}
+                  <strong>
+                    {bookmarks.filter((b) => b.summary === "").length}
+                  </strong>{" "}
+                  bookmarks that do not have any summaries. Bookmarks with
+                  existing summaries will be skipped.
                 </>
               ) : (
                 <>
-                  You are about to re-summarize <strong>{bookmarks.length}</strong> bookmarks. This will override all existing summaries and tags.
+                  You are about to re-summarize{" "}
+                  <strong>{bookmarks.length}</strong> bookmarks. This will
+                  override all existing summaries and tags.
                 </>
               )}
             </p>
             <div className="bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-xl border border-blue-100 dark:border-blue-900/30 text-xs text-blue-800 dark:text-blue-300">
-              Note: This will execute in parallel batches of 3 to respect rate limits. You can cancel the operation at any time.
+              Note: This will execute in parallel batches of 3 to respect rate
+              limits. You can cancel the operation at any time.
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button
@@ -678,15 +702,27 @@ export function BookmarksView() {
                   <div className="flex flex-col sm:flex-row gap-2 self-start flex-shrink-0">
                     <button
                       type="button"
-                      onClick={() => updateBookmark(bm.id, { manuallyAssigned: !bm.manuallyAssigned })}
+                      onClick={() =>
+                        updateBookmark(bm.id, {
+                          manuallyAssigned: !bm.manuallyAssigned,
+                        })
+                      }
                       className={`p-1.5 rounded-xl transition-all border cursor-pointer ${
                         bm.manuallyAssigned
                           ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/50 text-emerald-600 dark:text-emerald-400"
                           : "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 hover:text-gray-650"
                       }`}
-                      title={bm.manuallyAssigned ? "Locked from AI auto-sort (Click to unlock)" : "Unlocked (Click to lock from AI)"}
+                      title={
+                        bm.manuallyAssigned
+                          ? "Locked from AI auto-sort (Click to unlock)"
+                          : "Unlocked (Click to lock from AI)"
+                      }
                     >
-                      {bm.manuallyAssigned ? <Lock size={14} /> : <Unlock size={14} />}
+                      {bm.manuallyAssigned ? (
+                        <Lock size={14} />
+                      ) : (
+                        <Unlock size={14} />
+                      )}
                     </button>
                     <button
                       onClick={() => handleAISummarize(bm)}
@@ -708,7 +744,11 @@ export function BookmarksView() {
                               : "text-purple-500"
                         }`}
                       />
-                      {summarizingId === bm.id ? "Processing..." : hasSummary ? "Re-summarize" : "Summarize"}
+                      {summarizingId === bm.id
+                        ? "Processing..."
+                        : hasSummary
+                          ? "Re-summarize"
+                          : "Summarize"}
                     </button>
                     <button
                       onClick={() => {

@@ -53,7 +53,11 @@ export function CategoriesView() {
     if (!aiFolderId) return null;
     const aiFolder = aiFolders.find((f) => f.id === aiFolderId);
     if (!aiFolder) return null;
-    const realFolder = folders.find((rf) => rf.id === aiFolder.id || rf.name.toLowerCase() === aiFolder.name.toLowerCase());
+    const realFolder = folders.find(
+      (rf) =>
+        rf.id === aiFolder.id ||
+        rf.name.toLowerCase() === aiFolder.name.toLowerCase(),
+    );
     return realFolder ? realFolder.id : null;
   };
 
@@ -190,7 +194,9 @@ export function CategoriesView() {
       });
     });
     setProposals([]);
-    alert("Category Proposals successfully loaded into your active AI blueprint database!");
+    alert(
+      "Category Proposals successfully loaded into your active AI blueprint database!",
+    );
   };
 
   const handleCreateFolderSubmit = (e: React.FormEvent) => {
@@ -289,7 +295,11 @@ export function CategoriesView() {
           <button
             type="button"
             onClick={() => {
-              if (window.confirm("Are you sure you want to reload folder structures from your live Chrome folders? This will replace your current AI blueprint tree (prompt contexts for matching folder names will be preserved).")) {
+              if (
+                window.confirm(
+                  "Are you sure you want to reload folder structures from your live Chrome folders? This will replace your current AI blueprint tree (prompt contexts for matching folder names will be preserved).",
+                )
+              ) {
                 reloadAiFoldersFromReal();
               }
             }}
@@ -322,13 +332,19 @@ export function CategoriesView() {
 
       {/* WARNING BANNER */}
       <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-250 dark:border-amber-900/30 rounded-2xl p-4 flex items-start gap-3">
-        <HelpCircle className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={20} />
+        <HelpCircle
+          className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5"
+          size={20}
+        />
         <div>
           <h4 className="font-semibold text-amber-900 dark:text-amber-400 text-sm">
             AI Blueprint Context Definition Layer
           </h4>
           <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 leading-relaxed">
-            This is your AI folder blueprint. Changes here only affect how the AI sorts bookmarks (by defining categories and prompt contexts) — not your real Chrome folders. Use the <strong>Organize</strong> tab to manage real folders.
+            This is your AI folder blueprint. Changes here only affect how the
+            AI sorts bookmarks (by defining categories and prompt contexts) —
+            not your real Chrome folders. Use the <strong>Organize</strong> tab
+            to manage real folders.
           </p>
         </div>
       </div>
@@ -497,7 +513,8 @@ export function CategoriesView() {
 
           {aiFolders.length === 0 && addingUnderFolderId !== "root" ? (
             <div className="text-center py-20 text-gray-400 italic">
-              No categories blueprint defined. Select "AI Propose Layout" or click "Reload from Chrome" to bootstrap!
+              No categories blueprint defined. Select "AI Propose Layout" or
+              click "Reload from Chrome" to bootstrap!
             </div>
           ) : (
             rootFolders.map((root) => {

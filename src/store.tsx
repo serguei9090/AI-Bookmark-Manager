@@ -250,12 +250,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           setBookmarks(bookmarksList);
           setFolders(foldersList);
           initializeHistoryIfEmpty(bookmarksList, foldersList);
-          
+
           getStorageItem("bm_blueprint_folders").then((savedAiFolders) => {
             if (savedAiFolders) {
               setAiFolders(savedAiFolders);
             } else {
-              const initialAiFolders = foldersList.map(f => ({ ...f }));
+              const initialAiFolders = foldersList.map((f) => ({ ...f }));
               setAiFolders(initialAiFolders);
               setStorageItem("bm_blueprint_folders", initialAiFolders);
             }
@@ -284,7 +284,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           ...bm,
           tags: meta.tags || bm.tags || [],
           summary: meta.summary || bm.summary || "",
-          manuallyAssigned: meta.manuallyAssigned || bm.manuallyAssigned || false,
+          manuallyAssigned:
+            meta.manuallyAssigned || bm.manuallyAssigned || false,
         };
       });
 
@@ -304,7 +305,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       if (savedAiFolders) {
         setAiFolders(savedAiFolders);
       } else {
-        const initialAiFolders = foldersList.map(f => ({ ...f }));
+        const initialAiFolders = foldersList.map((f) => ({ ...f }));
         setAiFolders(initialAiFolders);
         await setStorageItem("bm_blueprint_folders", initialAiFolders);
       }
@@ -477,7 +478,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         );
       }
 
-      if (updates.tags !== undefined || updates.summary !== undefined || updates.manuallyAssigned !== undefined) {
+      if (
+        updates.tags !== undefined ||
+        updates.summary !== undefined ||
+        updates.manuallyAssigned !== undefined
+      ) {
         const metadataPromise = getStorageItem("bm_metadata_bookmarks").then(
           (currentMeta) => {
             const meta = currentMeta || {};
@@ -607,7 +612,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           meta[newBm.id] = {
             tags: newBm.tags || [],
             summary: newBm.summary || "",
-            manuallyAssigned: newBm.manuallyAssigned !== undefined ? newBm.manuallyAssigned : (meta[newBm.id]?.manuallyAssigned || false),
+            manuallyAssigned:
+              newBm.manuallyAssigned !== undefined
+                ? newBm.manuallyAssigned
+                : meta[newBm.id]?.manuallyAssigned || false,
           };
         });
 
@@ -631,7 +639,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           meta[bm.id] = {
             tags: bm.tags || [],
             summary: bm.summary || "",
-            manuallyAssigned: bm.manuallyAssigned !== undefined ? bm.manuallyAssigned : (meta[bm.id]?.manuallyAssigned || false),
+            manuallyAssigned:
+              bm.manuallyAssigned !== undefined
+                ? bm.manuallyAssigned
+                : meta[bm.id]?.manuallyAssigned || false,
           };
         });
         setStorageItem("bm_metadata_bookmarks", meta).then(() => {
@@ -996,7 +1007,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     const bmsMeta: Record<string, any> = {};
     targetBookmarks.forEach((b) => {
       const newId = oldIdToNewId[b.id] || b.id;
-      bmsMeta[newId] = { tags: b.tags, summary: b.summary, manuallyAssigned: b.manuallyAssigned || false };
+      bmsMeta[newId] = {
+        tags: b.tags,
+        summary: b.summary,
+        manuallyAssigned: b.manuallyAssigned || false,
+      };
     });
 
     const folsMeta: Record<string, any> = {};
@@ -1208,7 +1223,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const reloadAiFoldersFromReal = () => {
     const next = folders.map((rf) => {
-      const existing = aiFolders.find((af) => af.id === rf.id || af.name.toLowerCase() === rf.name.toLowerCase());
+      const existing = aiFolders.find(
+        (af) =>
+          af.id === rf.id || af.name.toLowerCase() === rf.name.toLowerCase(),
+      );
       return {
         ...rf,
         promptContext: existing ? existing.promptContext : "",

@@ -249,7 +249,12 @@ export async function autoSortBookmarks(
     const res = await fetch("/api/ai/auto-sort", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bookmarks, folders, systemPrompt, model: settings.model }),
+      body: JSON.stringify({
+        bookmarks,
+        folders,
+        systemPrompt,
+        model: settings.model,
+      }),
     });
 
     if (!res.ok) {

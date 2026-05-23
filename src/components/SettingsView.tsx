@@ -56,7 +56,9 @@ export function SettingsView() {
   const [isFetching, setIsFetching] = useState(false);
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [modelMeta, setModelMeta] = useState<Record<string, { outputTokenLimit?: number }>>({});
+  const [modelMeta, setModelMeta] = useState<
+    Record<string, { outputTokenLimit?: number }>
+  >({});
 
   // Clear fetched model list when provider changes
   useEffect(() => {
@@ -88,21 +90,21 @@ export function SettingsView() {
         const res = await fetch(listUrl);
         if (!res.ok) throw new Error(`Gemini API returned ${res.status}`);
         const data = await res.json();
-        
+
         const metaMap: Record<string, { outputTokenLimit?: number }> = {};
         const modelsList = (data.models || [])
           // Only include models that support generateContent
           .filter((m: any) =>
             (m.supportedGenerationMethods || []).includes("generateContent"),
           );
-        
+
         modelsList.forEach((m: any) => {
           const name = (m.name || "").replace(/^models\//, "");
           if (name) {
             metaMap[name] = { outputTokenLimit: m.outputTokenLimit };
           }
         });
-        
+
         setModelMeta(metaMap);
         models = Object.keys(metaMap).sort();
       } else if (settings.provider === "openai") {
