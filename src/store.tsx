@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { Bookmark, Folder, Settings, Proposal, HistoryEntry } from "./types";
 
 // Initial Data
@@ -125,6 +125,7 @@ type AppContextType = {
   updateFolder: (id: string, updates: Partial<Folder>) => void;
   addFolder: (folder: Omit<Folder, "id"> & { id?: string }) => Promise<string>;
   deleteFolder: (id: string) => void;
+  bulkDeleteFolders: (ids: string[], description: string) => void;
   addAiFolder: (folder: Folder) => void;
   updateAiFolder: (id: string, updates: Partial<Folder>) => void;
   deleteAiFolder: (id: string) => void;
@@ -178,7 +179,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     return saved ? JSON.parse(saved) : [];
   });
 
-  const initializeHistoryIfEmpty = (bms: Bookmark[], fols: Folder[]) => {
+  const initializeHistoryIfEmpty = useCallback((bms: Bookmark[], fols: Folder[]) => {
     setHistory((prev) => {
       if (prev.length === 0) {
         const entry: HistoryEntry = {
@@ -192,10 +193,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       return prev;
     });
-  };
+  }, []);
 
   // Async data loader for extension / metadata merge
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (isExtension) {
       try {
         const bookmarksMeta =
@@ -310,7 +311,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         await setStorageItem("bm_blueprint_folders", initialAiFolders);
       }
     }
-  };
+  }, [initializeHistoryIfEmpty]);
 
   // Sync event listeners for external Chrome Bookmark updates
   useEffect(() => {
@@ -342,7 +343,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         chrome.bookmarks.onMoved.removeListener(handleMoved);
       };
     }
-  }, []);
+  }, [loadData]);
 
   // Save updates in sandbox mode to localStorage
   useEffect(() => {
@@ -547,11 +548,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       isReconcilingRef.current = true;
       safeBmRemove(id, () => {
         getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
-          const deletePromise =
-            currentMeta && currentMeta[id]
-              ? (delete currentMeta[id],
-                setStorageItem("bm_metadata_bookmarks", currentMeta))
-              : Promise.resolve();
+          let deletePromise = Promise.resolve();
+          if (currentMeta && currentMeta[id]) {
+            delete currentMeta[id];
+            deletePromise = setStorageItem("bm_metadata_bookmarks", currentMeta);
+          }
           deletePromise
             .then(async () => {
               await loadData();
@@ -664,9 +665,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 
       Promise.all(removePromises).then(() => {
         getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
+          if (currentMeta) {
+            for (const id of ids) {
+              delete currentMeta[id];
+            }
+          }
           const deletePromise = currentMeta
-            ? (ids.forEach((id) => delete currentMeta[id]),
-              setStorageItem("bm_metadata_bookmarks", currentMeta))
+            ? setStorageItem("bm_metadata_bookmarks", currentMeta)
             : Promise.resolve();
 
           deletePromise
@@ -837,11 +842,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           Promise.all(movePromises).then(() => {
             safeBmRemove(id, () => {
               getStorageItem("bm_metadata_folders").then((currentMeta) => {
-                const deletePromise =
-                  currentMeta && currentMeta[id]
-                    ? (delete currentMeta[id],
-                      setStorageItem("bm_metadata_folders", currentMeta))
-                    : Promise.resolve();
+                let deletePromise = Promise.resolve();
+                if (currentMeta && currentMeta[id]) {
+                  delete currentMeta[id];
+                  deletePromise = setStorageItem("bm_metadata_folders", currentMeta);
+                }
                 deletePromise
                   .then(async () => {
                     await loadData();
@@ -864,9 +869,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           delete currentMeta[id];
           setStorageItem("bm_metadata_folders", currentMeta);
         }
-        setFolders((prev) => prev.filter((f) => f.id !== id));
+        // Promote child folders when parent is deleted in sandbox mode
+        setFolders((prev) =>
+          prev
+            .filter((f) => f.id !== id)
+            .map((f) => (f.parentId === id ? { ...f, parentId: fol.parentId } : f))
+        );
         setBookmarks((prev) =>
           prev.map((b) => (b.folderId === id ? { ...b, folderId: null } : b)),
+        );
+      });
+    }
+  };
+
+  const bulkDeleteFolders = (ids: string[], description: string) => {
+    pushHistory(description, bookmarks, folders);
+    const emptyFolderIds = new Set(ids);
+    if (isExtension) {
+      isReconcilingRef.current = true;
+      // Filter target folders to locate root-most folders to delete in one go
+      const rootMostIds = ids.filter((id) => {
+        const fol = folders.find((f) => f.id === id);
+        return !fol || !fol.parentId || !emptyFolderIds.has(fol.parentId);
+      });
+
+      const removePromises = rootMostIds.map((id) => {
+        return new Promise<void>((resolve) => {
+          safeBmRemoveTree(id, resolve);
+        });
+      });
+
+      Promise.all(removePromises).then(() => {
+        getStorageItem("bm_metadata_folders").then((currentMeta) => {
+          if (currentMeta) {
+            for (const id of ids) {
+              delete currentMeta[id];
+            }
+          }
+          const deletePromise = currentMeta
+            ? setStorageItem("bm_metadata_folders", currentMeta)
+            : Promise.resolve();
+
+          deletePromise
+            .then(async () => {
+              await loadData();
+              isReconcilingRef.current = false;
+            })
+            .catch((err) => {
+              isReconcilingRef.current = false;
+              console.error("Error in bulkDeleteFolders:", err);
+            });
+        });
+      });
+    } else {
+      getStorageItem("bm_metadata_folders").then((currentMeta) => {
+        if (currentMeta) {
+          ids.forEach((id) => {
+            delete currentMeta[id];
+          });
+          setStorageItem("bm_metadata_folders", currentMeta);
+        }
+        setFolders((prev) => prev.filter((f) => !ids.includes(f.id)));
+        setBookmarks((prev) =>
+          prev.map((b) =>
+            b.folderId && ids.includes(b.folderId) ? { ...b, folderId: null } : b
+          )
         );
       });
     }
@@ -1269,6 +1336,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         updateFolder,
         addFolder,
         deleteFolder,
+        bulkDeleteFolders,
         addAiFolder,
         updateAiFolder,
         deleteAiFolder,

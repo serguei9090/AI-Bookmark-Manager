@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   Folder,
   FolderPlus,
+  FolderMinus,
   Edit3,
   Trash2,
   Lock,
@@ -35,6 +36,7 @@ export function OrganizeView() {
     addFolder,
     updateFolder,
     deleteFolder,
+    bulkDeleteFolders,
     deleteBookmark,
     settings,
   } = useAppContext();
@@ -100,12 +102,16 @@ export function OrganizeView() {
 
   // Reset pagination on filter change
   React.useEffect(() => {
-    setCurrentPage(1);
+    if (selectedFolderFilter || search || sortField || filterLock || itemsPerPage) {
+      setCurrentPage(1);
+    }
   }, [selectedFolderFilter, search, sortField, filterLock, itemsPerPage]);
 
   // Clear bulk selection when changing folder filter
   React.useEffect(() => {
-    setSelectedBookmarkIds(new Set());
+    if (selectedFolderFilter !== undefined) {
+      setSelectedBookmarkIds(new Set());
+    }
   }, [selectedFolderFilter]);
 
   // Toggle expanded folder
@@ -113,7 +119,7 @@ export function OrganizeView() {
     setExpandedFolders((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const getFolderBookmarkCount = (folderId: string): number => {
+  const getFolderBookmarkCount = useCallback((folderId: string): number => {
     const getDescendantFolderIds = (fid: string): string[] => {
       const children = folders.filter((f) => f.parentId === fid);
       return [fid, ...children.flatMap((c) => getDescendantFolderIds(c.id))];
@@ -122,7 +128,12 @@ export function OrganizeView() {
     return bookmarks.filter(
       (b) => b.folderId !== null && allFolderIds.includes(b.folderId),
     ).length;
-  };
+  }, [folders, bookmarks]);
+
+  // Find folders that recursively contain 0 bookmarks
+  const emptyFolders = useMemo(() => {
+    return folders.filter((f) => getFolderBookmarkCount(f.id) === 0);
+  }, [folders, getFolderBookmarkCount]);
 
   // Helper to map blueprint folder IDs to real Chrome folder IDs by matching names
   const getRealFolderId = (aiFolderId: string | null): string | null => {
@@ -148,14 +159,14 @@ export function OrganizeView() {
   };
 
   // Parse Domain
-  const parseDomainName = (urlStr: string) => {
+  const parseDomainName = useCallback((urlStr: string) => {
     try {
       const url = new URL(urlStr);
       return url.hostname.replace("www.", "");
     } catch {
       return "Web Link";
     }
-  };
+  }, []);
 
   // Get real folder list tree nodes
   const rootRealFolders = useMemo(() => {
@@ -218,7 +229,7 @@ export function OrganizeView() {
     });
 
     return filtered;
-  }, [bookmarks, search, selectedFolderFilter, filterLock, sortField, folders]);
+  }, [bookmarks, search, selectedFolderFilter, filterLock, sortField, folders, parseDomainName]);
 
   // Pagination Calculations
   const totalItems = displayedBookmarks.length;
@@ -317,6 +328,22 @@ export function OrganizeView() {
       if (selectedFolderFilter === id) {
         setSelectedFolderFilter("all");
       }
+    }
+  };
+
+  const handlePruneEmptyFolders = () => {
+    const count = emptyFolders.length;
+    if (count === 0) return;
+
+    if (
+      window.confirm(
+        `Are you sure you want to delete all ${count} empty folder${
+          count === 1 ? "" : "s"
+        }?\nThis will remove folders and subfolders containing zero bookmarks.`,
+      )
+    ) {
+      const ids = emptyFolders.map((f) => f.id);
+      bulkDeleteFolders(ids, `Pruned ${count} empty folders`);
     }
   };
 
@@ -493,6 +520,7 @@ export function OrganizeView() {
       subRealFoldersMap.get(node.id)!.length > 0;
     const isExpanded = !!expandedFolders[node.id];
     const isSelected = selectedFolderFilter === node.id;
+    const isFolderEmpty = getFolderBookmarkCount(node.id) === 0;
 
     return (
       <div key={node.id} className="select-none">
@@ -501,18 +529,35 @@ export function OrganizeView() {
           className={`group flex items-center justify-between py-1.5 px-2 rounded-lg cursor-pointer transition-all ${
             isSelected
               ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold"
-              : "hover:bg-gray-100 dark:hover:bg-gray-850 text-gray-700 dark:text-gray-300"
+              : isFolderEmpty
+                ? "bg-amber-500/5 dark:bg-amber-500/5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-850"
+                : "hover:bg-gray-100 dark:hover:bg-gray-850 text-gray-700 dark:text-gray-300"
           }`}
           onClick={() => setSelectedFolderFilter(node.id)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setSelectedFolderFilter(node.id);
+            }
+          }}
+          role="button"
+          tabIndex={0}
         >
           <div className="flex items-center gap-1.5 min-w-0">
             {/* Toggle Expand Arrow */}
-            <span
+            <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 toggleExpand(node.id);
               }}
-              className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-750 text-gray-400 hover:text-gray-600 transition-colors"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.stopPropagation();
+                  toggleExpand(node.id);
+                }
+              }}
+              className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-750 text-gray-400 hover:text-gray-600 transition-colors border-0 bg-transparent cursor-pointer"
             >
               {hasChildren ? (
                 isExpanded ? (
@@ -523,13 +568,17 @@ export function OrganizeView() {
               ) : (
                 <span className="w-3.5 h-3.5 block" />
               )}
-            </span>
+            </button>
 
             {/* Folder Icon */}
             <Folder
               size={15}
               className={
-                isSelected ? "text-blue-500 shrink-0" : "text-gray-400 shrink-0"
+                isSelected
+                  ? "text-blue-500 shrink-0"
+                  : isFolderEmpty
+                    ? "text-amber-500/80 dark:text-amber-500/60 shrink-0"
+                    : "text-gray-400 shrink-0"
               }
             />
 
@@ -537,7 +586,7 @@ export function OrganizeView() {
             {renamingFolderId === node.id ? (
               <input
                 type="text"
-                autoFocus
+                ref={(el) => el && el.focus()}
                 value={renamingName}
                 onChange={(e) => setRenamingName(e.target.value)}
                 onBlur={() => handleRenameFolder(node.id)}
@@ -554,6 +603,11 @@ export function OrganizeView() {
                 <span className="text-[10px] text-gray-400 dark:text-gray-500 font-normal shrink-0">
                   ({getFolderBookmarkCount(node.id)})
                 </span>
+                {isFolderEmpty && (
+                  <span className="text-[9px] bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-450 px-1.5 py-0.2 rounded font-medium shrink-0 scale-90 origin-left border border-amber-100 dark:border-amber-900/30">
+                    empty
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -612,7 +666,7 @@ export function OrganizeView() {
             <div className="flex items-center gap-1">
               <input
                 type="text"
-                autoFocus
+                ref={(el) => el && el.focus()}
                 placeholder="New subfolder..."
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
@@ -623,12 +677,14 @@ export function OrganizeView() {
                 className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-1.5 py-0.5 text-xs text-gray-900 dark:text-white"
               />
               <button
+                type="button"
                 onClick={() => handleCreateFolder(node.id)}
                 className="p-0.5 bg-blue-600 text-white rounded"
               >
                 <Check size={11} />
               </button>
               <button
+                type="button"
                 onClick={() => setAddingChildToParentId(null)}
                 className="p-0.5 bg-gray-200 dark:bg-gray-700 text-gray-500 rounded"
               >
@@ -679,7 +735,7 @@ export function OrganizeView() {
             <div className="flex items-center gap-1">
               <input
                 type="text"
-                autoFocus
+                ref={(el) => el && el.focus()}
                 placeholder="New root folder..."
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
@@ -690,12 +746,14 @@ export function OrganizeView() {
                 className="flex-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2 py-1 text-xs text-gray-900 dark:text-white"
               />
               <button
+                type="button"
                 onClick={() => handleCreateFolder(null)}
                 className="p-1 bg-blue-600 text-white rounded-lg hover:bg-blue-750 transition-colors"
               >
                 <Check size={12} />
               </button>
               <button
+                type="button"
                 onClick={() => setAddingChildToParentId(null)}
                 className="p-1 bg-gray-200 dark:bg-gray-750 text-gray-500 hover:bg-gray-300 dark:hover:bg-gray-700 rounded-lg transition-colors"
               >
@@ -709,7 +767,15 @@ export function OrganizeView() {
         <div className="flex-1 overflow-y-auto space-y-1 pr-1 font-sans">
           {/* All Folder Selector */}
           <div
+            role="button"
+            tabIndex={0}
             onClick={() => setSelectedFolderFilter("all")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setSelectedFolderFilter("all");
+              }
+            }}
             className={`flex items-center gap-2 py-1.5 px-3 rounded-lg cursor-pointer text-xs transition-colors ${
               selectedFolderFilter === "all"
                 ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold"
@@ -722,7 +788,15 @@ export function OrganizeView() {
 
           {/* Uncategorized Folder Selector */}
           <div
+            role="button"
+            tabIndex={0}
             onClick={() => setSelectedFolderFilter("uncategorized")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setSelectedFolderFilter("uncategorized");
+              }
+            }}
             className={`flex items-center gap-2 py-1.5 px-3 rounded-lg cursor-pointer text-xs transition-colors ${
               selectedFolderFilter === "uncategorized"
                 ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold"
@@ -747,6 +821,25 @@ export function OrganizeView() {
             rootRealFolders.map((root) => renderFolderTreeNode(root))
           )}
         </div>
+
+        {/* Prune Empty Folders Card */}
+        {emptyFolders.length > 0 && (
+          <div className="mt-4 p-3 bg-amber-550/5 dark:bg-amber-950/10 border border-amber-250 dark:border-amber-900/30 rounded-xl flex flex-col gap-2 shrink-0 animate-fade-in">
+            <div className="flex items-center justify-between text-xs text-amber-800 dark:text-amber-300">
+              <span className="font-semibold flex items-center gap-1.5">
+                <FolderMinus size={14} className="text-amber-500" />
+                {emptyFolders.length} empty {emptyFolders.length === 1 ? "folder" : "folders"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handlePruneEmptyFolders}
+              className="w-full text-center text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold py-1.5 px-3 rounded-lg transition-all shadow-sm cursor-pointer active:scale-98"
+            >
+              Prune Empty Folders
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* MAIN WORKSPACE: Bookmarks Dense List Rows */}
@@ -911,8 +1004,12 @@ export function OrganizeView() {
                 {showBulkMoveMenu && (
                   <>
                     <div
+                      role="button"
+                      tabIndex={-1}
+                      aria-hidden="true"
                       className="fixed inset-0 z-40 bg-transparent"
                       onClick={() => setShowBulkMoveMenu(false)}
+                      onKeyDown={() => setShowBulkMoveMenu(false)}
                     />
                     <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl p-3 z-50 max-h-96 overflow-hidden flex flex-col font-sans animate-scale-up">
                       <div className="relative shrink-0 mb-2">
@@ -926,11 +1023,12 @@ export function OrganizeView() {
                           value={bulkMoveSearch}
                           onChange={(e) => setBulkMoveSearch(e.target.value)}
                           className="w-full pl-8 pr-2.5 py-2 bg-gray-50 dark:bg-gray-850 border border-gray-300 dark:border-gray-700 rounded-lg text-xs dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
-                          onClick={(e) => e.stopPropagation()} // Prevent close
+                          onClick={(e) => e.stopPropagation()}
                         />
                       </div>
                       <div className="flex-1 overflow-y-auto space-y-0.5 pr-0.5 scrollbar-thin">
                         <button
+                          type="button"
                           onClick={() => {
                             bulkMoveToFolder(null);
                             setShowBulkMoveMenu(false);
@@ -963,12 +1061,13 @@ export function OrganizeView() {
                           )
                           .map((f) => (
                             <button
+                              type="button"
                               key={f.id}
                               onClick={() => {
                                 bulkMoveToFolder(f.id);
                                 setShowBulkMoveMenu(false);
                               }}
-                              className="w-full text-left px-2.5 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-750 dark:text-gray-300 text-xs flex items-center justify-between gap-1.5 rounded-lg transition-colors group/item cursor-pointer"
+                              className="w-full text-left px-2.5 py-2 hover:bg-gray-100 dark:hover:bg-gray-850 text-gray-700 dark:text-gray-300 text-xs flex items-center justify-between gap-1.5 rounded-lg transition-colors group/item cursor-pointer"
                             >
                               <div className="flex items-center gap-2 min-w-0">
                                 <Folder
@@ -1020,9 +1119,9 @@ export function OrganizeView() {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {isInitialLoading ? (
-                Array.from({ length: 8 }).map((_, idx) => (
+                ["sk-1", "sk-2", "sk-3", "sk-4", "sk-5", "sk-6", "sk-7", "sk-8"].map((key) => (
                   <tr
-                    key={`skeleton-${idx}`}
+                    key={key}
                     className="animate-pulse border-b border-gray-100 dark:border-gray-800"
                   >
                     <td className="p-3 text-center">

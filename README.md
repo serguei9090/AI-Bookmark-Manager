@@ -1,5 +1,7 @@
 # AI Bookmark Manager & Chrome Extension Sandbox
 
+This project is for study purposes and is MIT open source license.
+
 An AI-powered bookmark manager acting as an interactive Chrome extension simulator. Features semantic categorization, auto-tagging, summary generation, dark mode, duplicate detection, and a persistent 10-state undo/revert database history.
 
 ---

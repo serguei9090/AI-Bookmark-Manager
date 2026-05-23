@@ -8,3 +8,6 @@ coverage/
 !.env.example
 .antigravity/
 .lancedb/
+.kilo/
+IINSTRUCTIONS.md
+.kilocodeignore
