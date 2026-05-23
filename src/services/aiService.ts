@@ -78,7 +78,7 @@ async function callLlmDirect(
       generationConfig: {
         responseMimeType: "application/json",
         temperature: temperature || 0.7,
-        maxOutputTokens: maxTokens || 1024,
+        ...(maxTokens > 0 ? { maxOutputTokens: maxTokens } : {}),
       },
     };
 
@@ -131,7 +131,7 @@ async function callLlmDirect(
       format: "json",
       options: {
         temperature: temperature || 0.7,
-        num_predict: maxTokens || 1024,
+        ...(maxTokens > 0 ? { num_predict: maxTokens } : {}),
       },
     };
   } else {
@@ -143,7 +143,7 @@ async function callLlmDirect(
         { role: "user", content: prompt },
       ],
       temperature: temperature || 0.7,
-      max_tokens: maxTokens || 1024,
+      ...(maxTokens > 0 ? { max_tokens: maxTokens } : {}),
       response_format: { type: "json_object" },
     };
   }
@@ -222,7 +222,8 @@ Title: ${bookmark.title}`;
 
   const responseText = await callLlmDirect(
     settings,
-    settings.systemPrompt || "You are an intelligent bookmark manager assistant.",
+    settings.systemPrompt ||
+      "You are an intelligent bookmark manager assistant.",
     prompt,
     schema,
   );

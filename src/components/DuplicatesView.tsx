@@ -25,17 +25,23 @@ export function DuplicatesView() {
       }));
   }, [bookmarks]);
 
+  // Total number of redundant copies (all duplicates minus one original per group)
+  const totalDuplicateCount = useMemo(
+    () => duplicateGroups.reduce((sum, g) => sum + g.items.length - 1, 0),
+    [duplicateGroups],
+  );
+  const totalGroupCount = duplicateGroups.length;
+
   const handleDelete = (id: string) => {
     if (confirm("Are you sure you want to remove this duplicate bookmark reference?")) {
       deleteBookmark(id);
     }
   };
 
-  // Bulk Clean: Keep the oldest/first record for each duplicates group, discard rest
   const handleBulkDeDuplicate = () => {
     const toRemoveIds: string[] = [];
     duplicateGroups.forEach(group => {
-      // Keep the 1st index (oldest), append others for removal
+      // Keep the 1st index (oldest = original), remove the rest
       group.items.slice(1).forEach(item => {
         toRemoveIds.push(item.id);
       });
@@ -43,9 +49,11 @@ export function DuplicatesView() {
 
     if (toRemoveIds.length === 0) return;
 
-    if (confirm(`This will automatically remove ${toRemoveIds.length} duplicate references, keeping only the original bookmark for each site. Proceed?`)) {
+    if (confirm(
+      `This will remove ${toRemoveIds.length} duplicate ${toRemoveIds.length === 1 ? 'copy' : 'copies'} across ${totalGroupCount} URL ${totalGroupCount === 1 ? 'group' : 'groups'}.\n\nThe OLDEST (original) bookmark for each URL is kept. All newer copies are deleted.\n\nProceed?`
+    )) {
       bulkDeleteBookmarks(toRemoveIds, `Removed ${toRemoveIds.length} duplicate bookmarks`);
-      alert(`Cleaned successfully! Removed ${toRemoveIds.length} redundant duplicate bookmarks.`);
+      alert(`Done! Removed ${toRemoveIds.length} redundant ${toRemoveIds.length === 1 ? 'copy' : 'copies'}. Originals preserved.`);
     }
   };
 
@@ -61,6 +69,17 @@ export function DuplicatesView() {
           <div>
             <h2 className="text-3xl font-bold tracking-tight">Duplicate Finder</h2>
             <p className="text-gray-500 text-sm mt-1">Scans exact URLs to identify repetitive listings safely.</p>
+            {totalGroupCount > 0 && (
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 text-xs font-bold px-3 py-1 rounded-full border border-red-200 dark:border-red-900/40">
+                  <CopyX size={12} />
+                  {totalDuplicateCount} duplicate {totalDuplicateCount === 1 ? 'copy' : 'copies'} found
+                </span>
+                <span className="inline-flex items-center gap-1 text-gray-400 dark:text-gray-500 text-xs font-mono">
+                  across {totalGroupCount} URL {totalGroupCount === 1 ? 'group' : 'groups'}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -78,11 +97,13 @@ export function DuplicatesView() {
 
       {/* ANALYSIS BANNER */}
       {duplicateGroups.length > 0 && (
-        <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 rounded-2xl p-4 flex gap-3 text-amber-800 dark:text-amber-300">
+      <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-200 rounded-2xl p-4 flex gap-3 text-amber-800 dark:text-amber-300">
           <AlertTriangle className="flex-shrink-0 mt-0.5 text-amber-600" size={18} />
           <div className="text-xs space-y-1">
-            <span className="font-bold block">Redundancy Warnings Identified</span>
-            <span>Storing identical URLs multiple times bloats your search index and structure. We advise keeping only the original reference below.</span>
+            <span className="font-bold block">
+              {totalDuplicateCount} redundant {totalDuplicateCount === 1 ? 'copy' : 'copies'} detected across {totalGroupCount} URL {totalGroupCount === 1 ? 'group' : 'groups'}
+            </span>
+            <span>Identical URLs stored multiple times bloat your index. <strong>Bulk Auto-Deduplicate keeps the oldest (original)</strong> and removes all newer copies.</span>
           </div>
         </div>
       )}
