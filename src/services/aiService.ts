@@ -1,48 +1,51 @@
-import { Bookmark, Folder, Settings, Proposal } from '../types';
+import { Bookmark, Folder, Settings, Proposal } from "../types";
 
 // Helper to clean and parse JSON response from LLMs
 function cleanAndParseJson(text: string): any {
   let cleaned = text.trim();
   // Remove markdown code block wrappers if the model returned them
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```[a-zA-Z]*\n/, '');
-    cleaned = cleaned.replace(/```$/, '');
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```[a-zA-Z]*\n/, "");
+    cleaned = cleaned.replace(/```$/, "");
     cleaned = cleaned.trim();
   }
   return JSON.parse(cleaned);
 }
 
 // Get the effective URL and API key based on the provider and settings
-export function getProviderConfig(settings: Settings): { url: string; apiKey: string } {
+export function getProviderConfig(settings: Settings): {
+  url: string;
+  apiKey: string;
+} {
   const provider = settings.provider;
   switch (provider) {
-    case 'gemini':
+    case "gemini":
       return {
-        url: settings.geminiUrl || 'https://generativelanguage.googleapis.com',
-        apiKey: settings.geminiApiKey || '',
+        url: settings.geminiUrl || "https://generativelanguage.googleapis.com",
+        apiKey: settings.geminiApiKey || "",
       };
-    case 'openai':
+    case "openai":
       return {
-        url: settings.openaiUrl || 'https://api.openai.com/v1',
-        apiKey: settings.openaiApiKey || '',
+        url: settings.openaiUrl || "https://api.openai.com/v1",
+        apiKey: settings.openaiApiKey || "",
       };
-    case 'ollama':
+    case "ollama":
       return {
-        url: settings.ollamaUrl || 'http://localhost:11434',
-        apiKey: settings.ollamaApiKey || '',
+        url: settings.ollamaUrl || "http://localhost:11434",
+        apiKey: settings.ollamaApiKey || "",
       };
-    case 'lmstudio':
+    case "lmstudio":
       return {
-        url: settings.lmstudioUrl || 'http://localhost:1234/v1',
-        apiKey: settings.lmstudioApiKey || '',
+        url: settings.lmstudioUrl || "http://localhost:1234/v1",
+        apiKey: settings.lmstudioApiKey || "",
       };
-    case 'custom':
+    case "custom":
       return {
-        url: settings.customUrl || 'http://localhost:8080/v1',
-        apiKey: settings.customApiKey || '',
+        url: settings.customUrl || "http://localhost:8080/v1",
+        apiKey: settings.customApiKey || "",
       };
     default:
-      return { url: '', apiKey: '' };
+      return { url: "", apiKey: "" };
   }
 }
 
@@ -51,29 +54,29 @@ async function callLlmDirect(
   settings: Settings,
   systemPrompt: string,
   prompt: string,
-  responseSchema?: any
+  responseSchema?: any,
 ): Promise<string> {
   const { provider, model, temperature, maxTokens } = settings;
   const { url: baseUrl, apiKey } = getProviderConfig(settings);
 
-  if (provider === 'gemini') {
+  if (provider === "gemini") {
     // Direct Gemini API call
-    const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+    const cleanBaseUrl = baseUrl.replace(/\/$/, "");
     // Support custom path if user provided full v1/v1beta, otherwise default to v1beta
-    const isFullUrl = cleanBaseUrl.includes('/v1');
-    const apiUrl = isFullUrl 
+    const isFullUrl = cleanBaseUrl.includes("/v1");
+    const apiUrl = isFullUrl
       ? `${cleanBaseUrl}/models/${model}:generateContent?key=${apiKey}`
       : `${cleanBaseUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const body: any = {
       contents: [
         {
-          role: 'user',
+          role: "user",
           parts: [{ text: `${systemPrompt}\n\n${prompt}` }],
         },
       ],
       generationConfig: {
-        responseMimeType: 'application/json',
+        responseMimeType: "application/json",
         temperature: temperature || 0.7,
         maxOutputTokens: maxTokens || 1024,
       },
@@ -84,9 +87,9 @@ async function callLlmDirect(
     }
 
     const res = await fetch(apiUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
     });
@@ -99,33 +102,33 @@ async function callLlmDirect(
     const data = await res.json();
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!content) {
-      throw new Error('Gemini API returned an empty or invalid structure.');
+      throw new Error("Gemini API returned an empty or invalid structure.");
     }
     return content;
   }
 
   // OpenAI-compatible Chat Completions providers (openai, lmstudio, custom, and ollama fallback)
-  const cleanBaseUrl = baseUrl.replace(/\/$/, '');
-  
+  const cleanBaseUrl = baseUrl.replace(/\/$/, "");
+
   // Decide which endpoint to hit
   let apiUrl = `${cleanBaseUrl}/chat/completions`;
   let requestBody: any = {};
-  
+
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   };
   if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`;
+    headers["Authorization"] = `Bearer ${apiKey}`;
   }
 
   // Special handling for Ollama native generate endpoint if requested or URL indicates it
-  if (provider === 'ollama' && cleanBaseUrl.endsWith('/api/generate')) {
+  if (provider === "ollama" && cleanBaseUrl.endsWith("/api/generate")) {
     apiUrl = cleanBaseUrl;
     requestBody = {
-      model: model || 'llama3',
+      model: model || "llama3",
       prompt: `${systemPrompt}\n\n${prompt}`,
       stream: false,
-      format: 'json',
+      format: "json",
       options: {
         temperature: temperature || 0.7,
         num_predict: maxTokens || 1024,
@@ -134,64 +137,68 @@ async function callLlmDirect(
   } else {
     // Standard chat completions for OpenAI, LMStudio, Custom, Ollama
     requestBody = {
-      model: model || (provider === 'openai' ? 'gpt-4o-mini' : 'local-model'),
+      model: model || (provider === "openai" ? "gpt-4o-mini" : "local-model"),
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: prompt },
       ],
       temperature: temperature || 0.7,
       max_tokens: maxTokens || 1024,
-      response_format: { type: 'json_object' },
+      response_format: { type: "json_object" },
     };
   }
 
   const res = await fetch(apiUrl, {
-    method: 'POST',
+    method: "POST",
     headers,
     body: JSON.stringify(requestBody),
   });
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`${provider.toUpperCase()} API Error (${res.status}): ${errText}`);
+    throw new Error(
+      `${provider.toUpperCase()} API Error (${res.status}): ${errText}`,
+    );
   }
 
   const data = await res.json();
-  
-  if (provider === 'ollama' && cleanBaseUrl.endsWith('/api/generate')) {
+
+  if (provider === "ollama" && cleanBaseUrl.endsWith("/api/generate")) {
     if (!data.response) {
-      throw new Error('Ollama API returned an empty response.');
+      throw new Error("Ollama API returned an empty response.");
     }
     return data.response;
   }
 
   const content = data.choices?.[0]?.message?.content;
   if (content === undefined || content === null) {
-    throw new Error(`${provider.toUpperCase()} API returned an empty content payload.`);
+    throw new Error(
+      `${provider.toUpperCase()} API returned an empty content payload.`,
+    );
   }
   return content;
 }
 
 export async function summarizeBookmark(
   bookmark: Bookmark,
-  settings: Settings
+  settings: Settings,
 ): Promise<{ summary: string; tags: string[] }> {
   // If provider is Gemini and no API key is set, fallback to the local server proxy
-  if (settings.provider === 'gemini' && !settings.geminiApiKey) {
-    const res = await fetch('/api/ai/summarize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+  if (settings.provider === "gemini" && !settings.geminiApiKey) {
+    const res = await fetch("/api/ai/summarize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bookmark }),
     });
 
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.error || 'Failed to summarize bookmark via proxy');
+      throw new Error(err.error || "Failed to summarize bookmark via proxy");
     }
 
     const data = await res.json();
     return {
-      summary: data.summary || '',
+      summary: data.summary || "",
       tags: data.tags || [],
     };
   }
@@ -202,27 +209,27 @@ URL: ${bookmark.url}
 Title: ${bookmark.title}`;
 
   const schema = {
-    type: 'OBJECT',
+    type: "OBJECT",
     properties: {
-      summary: { type: 'STRING' },
+      summary: { type: "STRING" },
       tags: {
-        type: 'ARRAY',
-        items: { type: 'STRING' },
+        type: "ARRAY",
+        items: { type: "STRING" },
       },
     },
-    required: ['summary', 'tags'],
+    required: ["summary", "tags"],
   };
 
   const responseText = await callLlmDirect(
     settings,
-    settings.systemPrompt || 'You are a helpful bookmark assistant.',
+    settings.systemPrompt || "You are a helpful bookmark assistant.",
     prompt,
-    schema
+    schema,
   );
 
   const parsed = cleanAndParseJson(responseText);
   return {
-    summary: parsed.summary || '',
+    summary: parsed.summary || "",
     tags: parsed.tags || [],
   };
 }
@@ -230,21 +237,23 @@ Title: ${bookmark.title}`;
 export async function autoSortBookmarks(
   bookmarks: Bookmark[],
   folders: Folder[],
-  settings: Settings
+  settings: Settings,
 ): Promise<Record<string, string | null>> {
-  const systemPrompt = settings.systemPrompt || 'You are an intelligent bookmark manager assistant.';
+  const systemPrompt =
+    settings.systemPrompt ||
+    "You are an intelligent bookmark manager assistant.";
 
   // If provider is Gemini and no API key is set, fallback to the local server proxy
-  if (settings.provider === 'gemini' && !settings.geminiApiKey) {
-    const res = await fetch('/api/ai/auto-sort', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+  if (settings.provider === "gemini" && !settings.geminiApiKey) {
+    const res = await fetch("/api/ai/auto-sort", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bookmarks, folders, systemPrompt }),
     });
 
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.error || 'Failed to auto-sort bookmarks via proxy');
+      throw new Error(err.error || "Failed to auto-sort bookmarks via proxy");
     }
 
     const data = await res.json();
@@ -256,45 +265,53 @@ export async function autoSortBookmarks(
 Return a JSON object with a single key "mapping" containing a mapping where each key is a bookmark ID and the value is the best-matching folder ID (or null if no folder matches).
 
 Folders:
-${folders.map((f) => `- ID: ${f.id}, Name: ${f.name}, Context: ${f.promptContext}`).join('\n')}
+${folders.map((f) => `- ID: ${f.id}, Name: ${f.name}, Context: ${f.promptContext}`).join("\n")}
 
 Bookmarks:
-${bookmarks.map((b) => `- ID: ${b.id}, URL: ${b.url}, Title: ${b.title}`).join('\n')}`;
+${bookmarks.map((b) => `- ID: ${b.id}, URL: ${b.url}, Title: ${b.title}`).join("\n")}`;
 
   const schema = {
-    type: 'OBJECT',
+    type: "OBJECT",
     properties: {
       mapping: {
-        type: 'OBJECT',
-        description: 'Mapping where key is bookmark ID and value is the best folder ID.',
-        additionalProperties: { type: 'STRING' },
+        type: "OBJECT",
+        description:
+          "Mapping where key is bookmark ID and value is the best folder ID.",
+        additionalProperties: { type: "STRING" },
       },
     },
-    required: ['mapping'],
+    required: ["mapping"],
   };
 
-  const responseText = await callLlmDirect(settings, systemPrompt, prompt, schema);
+  const responseText = await callLlmDirect(
+    settings,
+    systemPrompt,
+    prompt,
+    schema,
+  );
   const parsed = cleanAndParseJson(responseText);
   return parsed.mapping || {};
 }
 
 export async function proposeCategories(
   bookmarks: Bookmark[],
-  settings: Settings
+  settings: Settings,
 ): Promise<Proposal[]> {
-  const systemPrompt = settings.systemPrompt || 'You are an intelligent bookmark manager assistant.';
+  const systemPrompt =
+    settings.systemPrompt ||
+    "You are an intelligent bookmark manager assistant.";
 
   // If provider is Gemini and no API key is set, fallback to the local server proxy
-  if (settings.provider === 'gemini' && !settings.geminiApiKey) {
-    const res = await fetch('/api/ai/propose-category', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+  if (settings.provider === "gemini" && !settings.geminiApiKey) {
+    const res = await fetch("/api/ai/propose-category", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bookmarks, systemPrompt }),
     });
 
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.error || 'Failed to propose categories via proxy');
+      throw new Error(err.error || "Failed to propose categories via proxy");
     }
 
     const data = await res.json();
@@ -306,31 +323,37 @@ export async function proposeCategories(
 Return a JSON object with a single key "proposals" containing an array of proposed folder categories. Each category must have a "name" (string) and "promptContext" (string, a brief context describing what type of sites go here).
 
 Bookmarks:
-${bookmarks.map((b) => `- URL: ${b.url}, Title: ${b.title}`).join('\n')}`;
+${bookmarks.map((b) => `- URL: ${b.url}, Title: ${b.title}`).join("\n")}`;
 
   const schema = {
-    type: 'OBJECT',
+    type: "OBJECT",
     properties: {
       proposals: {
-        type: 'ARRAY',
-        description: 'List of proposed folder categories.',
+        type: "ARRAY",
+        description: "List of proposed folder categories.",
         items: {
-          type: 'OBJECT',
+          type: "OBJECT",
           properties: {
-            name: { type: 'STRING' },
+            name: { type: "STRING" },
             promptContext: {
-              type: 'STRING',
-              description: 'A brief prompt context describing what type of sites go here.',
+              type: "STRING",
+              description:
+                "A brief prompt context describing what type of sites go here.",
             },
           },
-          required: ['name', 'promptContext'],
+          required: ["name", "promptContext"],
         },
       },
     },
-    required: ['proposals'],
+    required: ["proposals"],
   };
 
-  const responseText = await callLlmDirect(settings, systemPrompt, prompt, schema);
+  const responseText = await callLlmDirect(
+    settings,
+    systemPrompt,
+    prompt,
+    schema,
+  );
   const parsed = cleanAndParseJson(responseText);
   return parsed.proposals || [];
 }

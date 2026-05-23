@@ -11,12 +11,12 @@ export type Bookmark = {
 
 export type Folder = {
   id: string;
-  parentId: string | null;  // supports subfolders nesting nested trees
+  parentId: string | null; // supports subfolders nesting nested trees
   name: string;
   promptContext: string;
 };
 
-export type AIProvider = 'openai' | 'gemini' | 'ollama' | 'lmstudio' | 'custom';
+export type AIProvider = "openai" | "gemini" | "ollama" | "lmstudio" | "custom";
 
 export type Settings = {
   provider: AIProvider;
@@ -27,7 +27,7 @@ export type Settings = {
   darkMode: boolean;
   temperature: number;
   maxTokens: number;
-  viewMode: 'extension' | 'dashboard'; // simulation layout matching user requested chrome extension concept
+  viewMode: "extension" | "dashboard"; // simulation layout matching user requested chrome extension concept
   geminiUrl?: string;
   geminiApiKey?: string;
   openaiUrl?: string;
@@ -52,4 +52,3 @@ export type HistoryEntry = {
   timestamp: number;
   description: string;
 };
-

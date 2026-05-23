@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;650&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;650&family=Space+Grotesk:wght@500;600;700&display=swap");
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -76,7 +76,8 @@
 
 /* Smooth transitions globally */
 * {
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-property:
+    color, background-color, border-color, text-decoration-color, fill, stroke;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }
