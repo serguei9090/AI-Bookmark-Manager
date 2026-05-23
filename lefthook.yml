@@ -1,10 +1,14 @@
 pre-commit:
   parallel: true
   commands:
-    format:
-      glob: "*.{ts,tsx,css,json,md}"
-      run: npx prettier --write {staged_files}
+    biome-format:
+      glob: "*.{js,ts,jsx,tsx,json,css,jsonc}"
+      run: biome format --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
-    lint:
+    biome-check:
+      glob: "*.{js,ts,jsx,tsx,json,css,jsonc}"
+      run: biome check --write --no-errors-on-unmatched {staged_files}
+      stage_fixed: true
+    type-check:
       glob: "*.{ts,tsx}"
-      run: npm run lint
+      run: bun run lint

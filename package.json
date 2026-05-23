@@ -9,7 +9,7 @@
 		"build": "vite build",
 		"build:extension": "node scripts/compile-extension.cjs",
 		"lint": "tsc --noEmit",
-		"format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"**/*.md\""
+		"format": "biome check --write ."
 	},
 	"dependencies": {
 		"@tailwindcss/vite": "^4.1.14",
