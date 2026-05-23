@@ -41,35 +41,43 @@ const safeBmUpdate = (
   changes: { title?: string; url?: string },
   cb: () => void,
 ) => {
-  if (CHROME_ROOT_IDS.has(id)) { cb(); return; }
+  if (CHROME_ROOT_IDS.has(id)) {
+    cb();
+    return;
+  }
   chrome.bookmarks.update(id, changes, () => cb());
 };
 
 /** Safe wrapper: skip chrome.bookmarks.move on protected root nodes */
-const safeBmMove = (
-  id: string,
-  dest: { parentId: string },
-  cb: () => void,
-) => {
-  if (CHROME_ROOT_IDS.has(id)) { cb(); return; }
+const safeBmMove = (id: string, dest: { parentId: string }, cb: () => void) => {
+  if (CHROME_ROOT_IDS.has(id)) {
+    cb();
+    return;
+  }
   chrome.bookmarks.move(id, dest, () => cb());
 };
 
 /** Safe wrapper: skip chrome.bookmarks.remove on protected root nodes */
 const safeBmRemove = (id: string, cb: () => void) => {
-  if (CHROME_ROOT_IDS.has(id)) { cb(); return; }
+  if (CHROME_ROOT_IDS.has(id)) {
+    cb();
+    return;
+  }
   chrome.bookmarks.remove(id, () => cb());
 };
 
 /** Safe wrapper: skip chrome.bookmarks.removeTree on protected root nodes */
 const safeBmRemoveTree = (id: string, cb: () => void) => {
-  if (CHROME_ROOT_IDS.has(id)) { cb(); return; }
+  if (CHROME_ROOT_IDS.has(id)) {
+    cb();
+    return;
+  }
   chrome.bookmarks.removeTree(id, () => cb());
 };
 
 /** Normalize a parentId: map null / "0" / undefined -> "1" (Bookmarks Bar) */
 const safeParentId = (id: string | null | undefined): string =>
-  !id || CHROME_ROOT_IDS.has(id) && id !== "1" && id !== "2" && id !== "3"
+  !id || (CHROME_ROOT_IDS.has(id) && id !== "1" && id !== "2" && id !== "3")
     ? "1"
     : id;
 
@@ -540,7 +548,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
           if (newBm.title !== oldBm.title || newBm.url !== oldBm.url) {
             promises.push(
               new Promise<void>((resolve) => {
-                safeBmUpdate(newBm.id, { title: newBm.title, url: newBm.url }, resolve);
+                safeBmUpdate(
+                  newBm.id,
+                  { title: newBm.title, url: newBm.url },
+                  resolve,
+                );
               }),
             );
           }

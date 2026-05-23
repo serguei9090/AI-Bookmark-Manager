@@ -11,30 +11,51 @@ import {
 /** Resolve the active base URL for a given provider from settings */
 const resolveBaseUrl = (settings: any): string => {
   switch (settings.provider) {
-    case "gemini":   return (settings.geminiUrl   || "https://generativelanguage.googleapis.com").replace(/\/$/, "");
-    case "openai":   return (settings.openaiUrl   || "https://api.openai.com").replace(/\/$/, "");
-    case "ollama":   return (settings.ollamaUrl   || "http://localhost:11434").replace(/\/$/, "");
-    case "lmstudio": return (settings.lmstudioUrl || "http://localhost:1234").replace(/\/$/, "");
-    default:         return (settings.customUrl   || "http://localhost:8080").replace(/\/$/, "");
+    case "gemini":
+      return (
+        settings.geminiUrl || "https://generativelanguage.googleapis.com"
+      ).replace(/\/$/, "");
+    case "openai":
+      return (settings.openaiUrl || "https://api.openai.com").replace(
+        /\/$/,
+        "",
+      );
+    case "ollama":
+      return (settings.ollamaUrl || "http://localhost:11434").replace(
+        /\/$/,
+        "",
+      );
+    case "lmstudio":
+      return (settings.lmstudioUrl || "http://localhost:1234").replace(
+        /\/$/,
+        "",
+      );
+    default:
+      return (settings.customUrl || "http://localhost:8080").replace(/\/$/, "");
   }
 };
 
 const resolveApiKey = (settings: any): string => {
   switch (settings.provider) {
-    case "gemini":   return settings.geminiApiKey   || "";
-    case "openai":   return settings.openaiApiKey   || "";
-    case "ollama":   return settings.ollamaApiKey   || "";
-    case "lmstudio": return settings.lmstudioApiKey || "";
-    default:         return settings.customApiKey   || "";
+    case "gemini":
+      return settings.geminiApiKey || "";
+    case "openai":
+      return settings.openaiApiKey || "";
+    case "ollama":
+      return settings.ollamaApiKey || "";
+    case "lmstudio":
+      return settings.lmstudioApiKey || "";
+    default:
+      return settings.customApiKey || "";
   }
 };
 
 export function SettingsView() {
   const { settings, setSettings } = useAppContext();
-  const [localSaving, setLocalSaving]     = useState(false);
-  const [isFetching, setIsFetching]       = useState(false);
+  const [localSaving, setLocalSaving] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
-  const [fetchError, setFetchError]       = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Clear fetched model list when provider changes
   useEffect(() => {
@@ -50,7 +71,7 @@ export function SettingsView() {
   const handleFetchModels = async () => {
     setIsFetching(true);
     setFetchError(null);
-    const base   = resolveBaseUrl(settings);
+    const base = resolveBaseUrl(settings);
     const apiKey = resolveApiKey(settings);
 
     try {
@@ -59,21 +80,22 @@ export function SettingsView() {
       if (settings.provider === "gemini") {
         // Gemini: GET /v1beta/models?key=...
         const isFullUrl = base.includes("/v1");
-        const listUrl   = isFullUrl
+        const listUrl = isFullUrl
           ? `${base}/models?key=${apiKey}`
           : `${base}/v1beta/models?key=${apiKey}`;
-        const res  = await fetch(listUrl);
+        const res = await fetch(listUrl);
         if (!res.ok) throw new Error(`Gemini API returned ${res.status}`);
         const data = await res.json();
         models = (data.models || [])
           // Only include models that support generateContent
-          .filter((m: any) => (m.supportedGenerationMethods || []).includes("generateContent"))
+          .filter((m: any) =>
+            (m.supportedGenerationMethods || []).includes("generateContent"),
+          )
           .map((m: any) => (m.name || "").replace(/^models\//, ""))
           .filter(Boolean);
-
       } else if (settings.provider === "openai") {
         // OpenAI: GET /v1/models  with Bearer auth
-        const res  = await fetch(`${base}/v1/models`, {
+        const res = await fetch(`${base}/v1/models`, {
           headers: { Authorization: `Bearer ${apiKey}` },
         });
         if (!res.ok) throw new Error(`OpenAI API returned ${res.status}`);
@@ -82,23 +104,23 @@ export function SettingsView() {
           .map((m: any) => m.id)
           .filter(Boolean)
           .sort();
-
       } else if (settings.provider === "ollama") {
         // Ollama: GET /api/tags  (no auth)
-        const res  = await fetch(`${base}/api/tags`);
+        const res = await fetch(`${base}/api/tags`);
         if (!res.ok) throw new Error(`Ollama returned ${res.status}`);
         const data = await res.json();
         models = (data.models || [])
           .map((m: any) => m.name)
           .filter(Boolean)
           .sort();
-
       } else {
         // LMStudio / Custom: OpenAI-compatible GET /v1/models
-        const url     = base.includes("/v1") ? `${base}/models` : `${base}/v1/models`;
-        const headers: Record<string,string> = {};
+        const url = base.includes("/v1")
+          ? `${base}/models`
+          : `${base}/v1/models`;
+        const headers: Record<string, string> = {};
         if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-        const res  = await fetch(url, { headers });
+        const res = await fetch(url, { headers });
         if (!res.ok) throw new Error(`Endpoint returned ${res.status}`);
         const data = await res.json();
         models = (data.data || [])
@@ -107,7 +129,8 @@ export function SettingsView() {
           .sort();
       }
 
-      if (models.length === 0) throw new Error("No models returned by endpoint");
+      if (models.length === 0)
+        throw new Error("No models returned by endpoint");
       setFetchedModels(models);
       // Auto-select first model if current selection not in new list
       if (!models.includes(settings.model)) {
@@ -173,7 +196,10 @@ export function SettingsView() {
                 className="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline flex items-center gap-1 disabled:opacity-50"
                 title="Fetch live model list from the configured endpoint"
               >
-                <RefreshCw size={12} className={isFetching ? "animate-spin" : ""} />
+                <RefreshCw
+                  size={12}
+                  className={isFetching ? "animate-spin" : ""}
+                />
                 {isFetching ? "Fetching..." : "Auto-Fetch List"}
               </button>
             </label>
@@ -190,29 +216,38 @@ export function SettingsView() {
               <select
                 className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white focus:ring-2 focus:ring-blue-500 transition-all font-mono text-sm"
                 value={settings.model}
-                onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+                onChange={(e) =>
+                  setSettings({ ...settings, model: e.target.value })
+                }
               >
                 {fetchedModels.length === 0 ? (
                   <option value={settings.model || ""} disabled>
-                    {settings.model || "— Click Auto-Fetch List to load models —"}
+                    {settings.model ||
+                      "— Click Auto-Fetch List to load models —"}
                   </option>
                 ) : (
                   fetchedModels.map((m) => (
-                    <option key={m} value={m}>{m}</option>
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
                   ))
                 )}
-                <option value="custom-defined">— Enter custom model name —</option>
+                <option value="custom-defined">
+                  — Enter custom model name —
+                </option>
               </select>
             </div>
 
             {fetchedModels.length === 0 && !fetchError && (
               <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-                No models loaded yet — click <strong>Auto-Fetch List</strong> to pull live models from the endpoint.
+                No models loaded yet — click <strong>Auto-Fetch List</strong> to
+                pull live models from the endpoint.
               </p>
             )}
             {fetchedModels.length > 0 && (
               <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1">
-                ✓ {fetchedModels.length} model{fetchedModels.length !== 1 ? "s" : ""} loaded from endpoint
+                ✓ {fetchedModels.length} model
+                {fetchedModels.length !== 1 ? "s" : ""} loaded from endpoint
               </p>
             )}
           </div>
@@ -419,13 +454,17 @@ export function SettingsView() {
                 value={settings.maxTokens}
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
-                  setSettings({ ...settings, maxTokens: isNaN(val) ? 0 : Math.max(0, val) });
+                  setSettings({
+                    ...settings,
+                    maxTokens: isNaN(val) ? 0 : Math.max(0, val),
+                  });
                 }}
                 placeholder="e.g. 4096, 32768, 128000"
                 className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white font-mono text-sm focus:ring-2 focus:ring-purple-500 outline-none transition-all"
               />
               <span className="block text-[10px] text-gray-400 dark:text-gray-500 mt-1">
-                Default 4096 · enter any value (e.g. 2048, 32768, 128000) · 0 = omit limit
+                Default 4096 · enter any value (e.g. 2048, 32768, 128000) · 0 =
+                omit limit
               </span>
             </div>
           </div>
