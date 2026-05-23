@@ -1,722 +1,722 @@
-import React, { useState, useMemo } from "react";
 import {
-  FolderTree,
-  Sparkles,
-  Plus,
-  Edit2,
-  Trash,
-  HelpCircle,
-  XCircle,
-  Check,
-  CornerDownRight,
+	Check,
+	CornerDownRight,
+	Edit2,
+	FolderTree,
+	HelpCircle,
+	Plus,
+	Sparkles,
+	Trash,
+	XCircle,
 } from "lucide-react";
-import { useAppContext } from "../store";
-import { Folder } from "../types";
+import type React from "react";
+import { useMemo, useState } from "react";
 import { autoSortBookmarks, proposeCategories } from "../services/aiService";
+import { useAppContext } from "../store";
+import type { Folder, Proposal } from "../types";
 
 export function CategoriesView() {
-  const {
-    bookmarks,
-    folders,
-    aiFolders,
-    batchUpdateBookmarks,
-    addAiFolder,
-    deleteAiFolder,
-    updateAiFolder,
-    reloadAiFoldersFromReal,
-    settings,
-  } = useAppContext();
-  const [isSorting, setIsSorting] = useState(false);
-  const [isProposing, setIsProposing] = useState(false);
+	const {
+		bookmarks,
+		folders,
+		aiFolders,
+		batchUpdateBookmarks,
+		addAiFolder,
+		deleteAiFolder,
+		updateAiFolder,
+		reloadAiFoldersFromReal,
+		settings,
+	} = useAppContext();
+	const [isSorting, setIsSorting] = useState(false);
+	const [isProposing, setIsProposing] = useState(false);
 
-  // Proposals container
-  const [proposals, setProposals] = useState<any[]>([]);
+	// Proposals container
+	const [proposals, setProposals] = useState<Proposal[]>([]);
 
-  // Add dialog state
-  const [isAddingFolder, setIsAddingFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState("");
-  const [newParentId, setNewParentId] = useState<string>("root");
-  const [newPromptContext, setNewPromptContext] = useState("");
+	// Add dialog state
+	const [_isAddingFolder, setIsAddingFolder] = useState(false);
+	const [newFolderName, setNewFolderName] = useState("");
+	const [newParentId, setNewParentId] = useState<string>("root");
+	const [newPromptContext, setNewPromptContext] = useState("");
 
-  // For inline folder creation
-  const [addingUnderFolderId, setAddingUnderFolderId] = useState<string | null>(
-    null,
-  );
-  const [inlineFolderName, setInlineFolderName] = useState("");
-  const [inlinePromptContext, setInlinePromptContext] = useState("");
+	// For inline folder creation
+	const [addingUnderFolderId, setAddingUnderFolderId] = useState<string | null>(
+		null,
+	);
+	const [inlineFolderName, setInlineFolderName] = useState("");
+	const [inlinePromptContext, setInlinePromptContext] = useState("");
 
-  // Helper to map blueprint folder IDs to real Chrome folder IDs by matching names
-  const getRealFolderId = (aiFolderId: string | null): string | null => {
-    if (!aiFolderId) return null;
-    const aiFolder = aiFolders.find((f) => f.id === aiFolderId);
-    if (!aiFolder) return null;
-    const realFolder = folders.find(
-      (rf) =>
-        rf.id === aiFolder.id ||
-        rf.name.toLowerCase() === aiFolder.name.toLowerCase(),
-    );
-    return realFolder ? realFolder.id : null;
-  };
+	// Helper to map blueprint folder IDs to real Chrome folder IDs by matching names
+	const getRealFolderId = (aiFolderId: string | null): string | null => {
+		if (!aiFolderId) return null;
+		const aiFolder = aiFolders.find((f) => f.id === aiFolderId);
+		if (!aiFolder) return null;
+		const realFolder = folders.find(
+			(rf) =>
+				rf.id === aiFolder.id ||
+				rf.name.toLowerCase() === aiFolder.name.toLowerCase(),
+		);
+		return realFolder ? realFolder.id : null;
+	};
 
-  const handleInlineCreateFolder = (parentId: string | null) => {
-    if (!inlineFolderName.trim()) return;
-    addAiFolder({
-      id: crypto.randomUUID(),
-      parentId,
-      name: inlineFolderName.trim(),
-      promptContext: inlinePromptContext.trim(),
-    });
-    setAddingUnderFolderId(null);
-    setInlineFolderName("");
-    setInlinePromptContext("");
-  };
+	const handleInlineCreateFolder = (parentId: string | null) => {
+		if (!inlineFolderName.trim()) return;
+		addAiFolder({
+			id: crypto.randomUUID(),
+			parentId,
+			name: inlineFolderName.trim(),
+			promptContext: inlinePromptContext.trim(),
+		});
+		setAddingUnderFolderId(null);
+		setInlineFolderName("");
+		setInlinePromptContext("");
+	};
 
-  // Editing folder state
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editParentId, setEditParentId] = useState<string>("root");
-  const [editPromptContext, setEditPromptContext] = useState("");
+	// Editing folder state
+	const [editingId, setEditingId] = useState<string | null>(null);
+	const [editName, setEditName] = useState("");
+	const [editParentId, setEditParentId] = useState<string>("root");
+	const [editPromptContext, setEditPromptContext] = useState("");
 
-  // Auto classify bookmark categories using AI service
-  const handleAutoSort = async () => {
-    setIsSorting(true);
-    try {
-      const mapping = await autoSortBookmarks(bookmarks, aiFolders, settings);
-      if (mapping && Object.keys(mapping).length > 0) {
-        const updatedBms = bookmarks.map((b) => {
-          if (b.manuallyAssigned) return b;
-          const targetAiId = mapping[b.id];
-          if (targetAiId === undefined) return b;
-          return {
-            ...b,
-            folderId: getRealFolderId(targetAiId),
-          };
-        });
-        batchUpdateBookmarks(updatedBms, "AI Auto-Sorted bookmarks");
-        alert(
-          "AI Auto-Sort complete! Bookmarks organized securely based on folder semantic definitions.",
-        );
-      } else {
-        fallbackAutoSort();
-      }
-    } catch (e) {
-      console.error(e);
-      fallbackAutoSort();
-    } finally {
-      setIsSorting(false);
-    }
-  };
+	// Auto classify bookmark categories using AI service
+	const handleAutoSort = async () => {
+		setIsSorting(true);
+		try {
+			const mapping = await autoSortBookmarks(bookmarks, aiFolders, settings);
+			if (mapping && Object.keys(mapping).length > 0) {
+				const updatedBms = bookmarks.map((b) => {
+					if (b.manuallyAssigned) return b;
+					const targetAiId = mapping[b.id];
+					if (targetAiId === undefined) return b;
+					return {
+						...b,
+						folderId: getRealFolderId(targetAiId),
+					};
+				});
+				batchUpdateBookmarks(updatedBms, "AI Auto-Sorted bookmarks");
+				alert(
+					"AI Auto-Sort complete! Bookmarks organized securely based on folder semantic definitions.",
+				);
+			} else {
+				fallbackAutoSort();
+			}
+		} catch (e) {
+			console.error(e);
+			fallbackAutoSort();
+		} finally {
+			setIsSorting(false);
+		}
+	};
 
-  const fallbackAutoSort = () => {
-    let matchCount = 0;
-    const updated = bookmarks.map((b) => {
-      if (b.folderId || b.manuallyAssigned) return b;
+	const fallbackAutoSort = () => {
+		let matchCount = 0;
+		const updated = bookmarks.map((b) => {
+			if (b.folderId || b.manuallyAssigned) return b;
 
-      for (const fol of aiFolders) {
-        const keywords = [
-          fol.name.toLowerCase(),
-          ...(fol.promptContext
-            ? fol.promptContext.toLowerCase().split(/[\s,.-]+/)
-            : []),
-        ].filter((k) => k.length > 3);
+			for (const fol of aiFolders) {
+				const keywords = [
+					fol.name.toLowerCase(),
+					...(fol.promptContext
+						? fol.promptContext.toLowerCase().split(/[\s,.-]+/)
+						: []),
+				].filter((k) => k.length > 3);
 
-        const textMatches = keywords.some(
-          (kw) =>
-            b.title.toLowerCase().includes(kw) ||
-            b.url.toLowerCase().includes(kw),
-        );
+				const textMatches = keywords.some(
+					(kw) =>
+						b.title.toLowerCase().includes(kw) ||
+						b.url.toLowerCase().includes(kw),
+				);
 
-        if (textMatches) {
-          const realId = getRealFolderId(fol.id);
-          if (realId) {
-            matchCount++;
-            return { ...b, folderId: realId };
-          }
-        }
-      }
-      return b;
-    });
+				if (textMatches) {
+					const realId = getRealFolderId(fol.id);
+					if (realId) {
+						matchCount++;
+						return { ...b, folderId: realId };
+					}
+				}
+			}
+			return b;
+		});
 
-    batchUpdateBookmarks(updated, "Local Auto-Sorted bookmarks");
-    alert(
-      `Local Match Complete! Automatically matched ${matchCount} bookmarks based on title and folder context metadata.`,
-    );
-  };
+		batchUpdateBookmarks(updated, "Local Auto-Sorted bookmarks");
+		alert(
+			`Local Match Complete! Automatically matched ${matchCount} bookmarks based on title and folder context metadata.`,
+		);
+	};
 
-  // Generate category proposals via AI service
-  const handlePropose = async () => {
-    setIsProposing(true);
-    try {
-      const proposed = await proposeCategories(bookmarks, settings);
-      if (proposed && proposed.length > 0) {
-        setProposals(proposed);
-      } else {
-        setProposals(getMockProposals());
-      }
-    } catch (e) {
-      console.error(e);
-      setProposals(getMockProposals());
-    } finally {
-      setIsProposing(false);
-    }
-  };
+	// Generate category proposals via AI service
+	const handlePropose = async () => {
+		setIsProposing(true);
+		try {
+			const proposed = await proposeCategories(bookmarks, settings);
+			if (proposed && proposed.length > 0) {
+				setProposals(proposed);
+			} else {
+				setProposals(getMockProposals());
+			}
+		} catch (e) {
+			console.error(e);
+			setProposals(getMockProposals());
+		} finally {
+			setIsProposing(false);
+		}
+	};
 
-  const getMockProposals = () => {
-    return [
-      {
-        name: "Technology & Hardware",
-        promptContext:
-          "CPUs, cloud infrastructure, specifications, tech hardware sheets.",
-      },
-      {
-        name: "Learning & Tutorials",
-        promptContext:
-          "Online education resources, coding interactive playgrounds, MDN references.",
-      },
-      {
-        name: "Social & Communication",
-        promptContext:
-          "Discussion boards, forums, developer communities like StackOverflow.",
-      },
-    ];
-  };
+	const getMockProposals = () => {
+		return [
+			{
+				name: "Technology & Hardware",
+				promptContext:
+					"CPUs, cloud infrastructure, specifications, tech hardware sheets.",
+			},
+			{
+				name: "Learning & Tutorials",
+				promptContext:
+					"Online education resources, coding interactive playgrounds, MDN references.",
+			},
+			{
+				name: "Social & Communication",
+				promptContext:
+					"Discussion boards, forums, developer communities like StackOverflow.",
+			},
+		];
+	};
 
-  const applyProposals = () => {
-    proposals.forEach((p) => {
-      addAiFolder({
-        id: crypto.randomUUID(),
-        parentId: null,
-        name: p.name,
-        promptContext: p.promptContext,
-      });
-    });
-    setProposals([]);
-    alert(
-      "Category Proposals successfully loaded into your active AI blueprint database!",
-    );
-  };
+	const applyProposals = () => {
+		proposals.forEach((p) => {
+			addAiFolder({
+				id: crypto.randomUUID(),
+				parentId: null,
+				name: p.name,
+				promptContext: p.promptContext,
+			});
+		});
+		setProposals([]);
+		alert(
+			"Category Proposals successfully loaded into your active AI blueprint database!",
+		);
+	};
 
-  const handleCreateFolderSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFolderName.trim()) return;
+	const _handleCreateFolderSubmit = (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!newFolderName.trim()) return;
 
-    addAiFolder({
-      id: crypto.randomUUID(),
-      parentId: newParentId === "root" ? null : newParentId,
-      name: newFolderName.trim(),
-      promptContext: newPromptContext.trim(),
-    });
+		addAiFolder({
+			id: crypto.randomUUID(),
+			parentId: newParentId === "root" ? null : newParentId,
+			name: newFolderName.trim(),
+			promptContext: newPromptContext.trim(),
+		});
 
-    setIsAddingFolder(false);
-    setNewFolderName("");
-    setNewParentId("root");
-    setNewPromptContext("");
-  };
+		setIsAddingFolder(false);
+		setNewFolderName("");
+		setNewParentId("root");
+		setNewPromptContext("");
+	};
 
-  const startEdit = (fol: Folder) => {
-    setEditingId(fol.id);
-    setEditName(fol.name);
-    setEditParentId(fol.parentId || "root");
-    setEditPromptContext(fol.promptContext);
-  };
+	const startEdit = (fol: Folder) => {
+		setEditingId(fol.id);
+		setEditName(fol.name);
+		setEditParentId(fol.parentId || "root");
+		setEditPromptContext(fol.promptContext);
+	};
 
-  const saveEdit = () => {
-    if (!editName.trim()) return;
-    updateAiFolder(editingId!, {
-      name: editName.trim(),
-      parentId: editParentId === "root" ? null : editParentId,
-      promptContext: editPromptContext.trim(),
-    });
-    setEditingId(null);
-  };
+	const saveEdit = () => {
+		if (!editName.trim() || !editingId) return;
+		updateAiFolder(editingId, {
+			name: editName.trim(),
+			parentId: editParentId === "root" ? null : editParentId,
+			promptContext: editPromptContext.trim(),
+		});
+		setEditingId(null);
+	};
 
-  const handleDeleteFolder = (id: string, name: string) => {
-    if (
-      window.confirm(
-        `Are you sure you want to delete the blueprint category "${name}"? This will NOT touch your real Chrome bookmarks.`,
-      )
-    ) {
-      deleteAiFolder(id);
-    }
-  };
+	const handleDeleteFolder = (id: string, name: string) => {
+		if (
+			window.confirm(
+				`Are you sure you want to delete the blueprint category "${name}"? This will NOT touch your real Chrome bookmarks.`,
+			)
+		) {
+			deleteAiFolder(id);
+		}
+	};
 
-  // Build recursive tree visual
-  const rootFolders = useMemo(
-    () => aiFolders.filter((f) => !f.parentId),
-    [aiFolders],
-  );
-  const subFoldersMap = useMemo(() => {
-    const map = new Map<string, Folder[]>();
-    aiFolders.forEach((f) => {
-      if (f.parentId) {
-        const group = map.get(f.parentId) || [];
-        group.push(f);
-        map.set(f.parentId, group);
-      }
-    });
-    return map;
-  }, [aiFolders]);
+	// Build recursive tree visual
+	const rootFolders = useMemo(
+		() => aiFolders.filter((f) => !f.parentId),
+		[aiFolders],
+	);
+	const subFoldersMap = useMemo(() => {
+		const map = new Map<string, Folder[]>();
+		aiFolders.forEach((f) => {
+			if (f.parentId) {
+				const group = map.get(f.parentId) || [];
+				group.push(f);
+				map.set(f.parentId, group);
+			}
+		});
+		return map;
+	}, [aiFolders]);
 
-  const getBookmarksCount = (folderId: string) => {
-    return bookmarks.filter((b) => b.folderId === folderId).length;
-  };
+	const getBookmarksCount = (folderId: string) => {
+		return bookmarks.filter((b) => b.folderId === folderId).length;
+	};
 
-  // Helper to edit proposal items
-  const handleEditProposalValue = (
-    index: number,
-    field: "name" | "promptContext",
-    val: string,
-  ) => {
-    const next = [...proposals];
-    next[index][field] = val;
-    setProposals(next);
-  };
+	// Helper to edit proposal items
+	const handleEditProposalValue = (
+		index: number,
+		field: "name" | "promptContext",
+		val: string,
+	) => {
+		const next = [...proposals];
+		next[index][field] = val;
+		setProposals(next);
+	};
 
-  const handleRemoveProposalItem = (index: number) => {
-    setProposals((prev) => prev.filter((_, i) => i !== index));
-  };
+	const handleRemoveProposalItem = (index: number) => {
+		setProposals((prev) => prev.filter((_, i) => i !== index));
+	};
 
-  // Recursive category tree node renderer to support nested subfolders at any depth
-  const renderCategoryNode = (node: Folder, depth = 0) => {
-    const subs = subFoldersMap.get(node.id) || [];
-    const hasChildren = subs.length > 0;
-    const isEditing = editingId === node.id;
+	// Recursive category tree node renderer to support nested subfolders at any depth
+	const renderCategoryNode = (node: Folder, depth = 0) => {
+		const subs = subFoldersMap.get(node.id) || [];
+		const hasChildren = subs.length > 0;
+		const isEditing = editingId === node.id;
 
-    return (
-      <div key={node.id} className="space-y-2 select-none">
-        {/* CATEGORY CARD */}
-        {isEditing ? (
-          <div className="space-y-3 bg-gray-50 dark:bg-gray-900 p-3.5 rounded-xl border border-yellow-200 mt-1 shadow-sm">
-            <input
-              type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-2.5 py-1.5 dark:text-white font-bold text-xs"
-            />
-            <select
-              value={editParentId}
-              onChange={(e) => setEditParentId(e.target.value)}
-              className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-2.5 py-1.5 dark:text-white text-xs"
-            >
-              <option value="root">📁 Root Level</option>
-              {aiFolders
-                .filter((f) => f.id !== node.id)
-                .map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-            </select>
-            <textarea
-              rows={2}
-              value={editPromptContext}
-              onChange={(e) => setEditPromptContext(e.target.value)}
-              placeholder="AI prompt context keywords (optional)..."
-              className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs dark:text-white outline-none focus:ring-1 focus:ring-blue-500 resize-none font-sans"
-            />
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingId(null)}
-                className="text-xs text-gray-400 font-semibold px-2 py-1 hover:text-gray-650"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveEdit}
-                className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-1 rounded-lg"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div
-            style={{ marginLeft: `${depth > 0 ? 12 : 0}px` }}
-            className={`flex items-start justify-between group py-2 px-3 border border-gray-100 dark:border-gray-700/50 rounded-xl hover:border-gray-200 dark:hover:border-gray-700 hover:bg-gray-50/50 dark:hover:bg-gray-850/10 transition-all ${
-              depth === 0
-                ? "bg-white dark:bg-gray-800"
-                : "bg-gray-50/30 dark:bg-gray-900/10"
-            }`}
-          >
-            <div className="flex items-start gap-2 min-w-0">
-              {depth > 0 && (
-                <CornerDownRight
-                  size={14}
-                  className="text-gray-400 mt-1 shrink-0"
-                />
-              )}
-              <div className="space-y-0.5 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span
-                    className={`font-semibold text-gray-805 dark:text-gray-200 ${depth === 0 ? "font-bold text-base text-gray-900 dark:text-white" : "text-xs"}`}
-                  >
-                    {node.name}
-                  </span>
-                  {node.promptContext && (
-                    <Sparkles
-                      size={depth === 0 ? 13 : 11}
-                      className="text-purple-500 shrink-0"
-                      title={`AI Context: ${node.promptContext}`}
-                    />
-                  )}
-                  <span
-                    className={`bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-1.5 py-0.5 rounded font-semibold font-mono ${depth === 0 ? "text-[10px]" : "text-[9px]"}`}
-                  >
-                    {getBookmarksCount(node.id)} Items
-                  </span>
-                </div>
-                {node.promptContext && (
-                  <p className="text-[11px] text-gray-550 dark:text-gray-400 font-sans max-w-lg leading-relaxed pl-1">
-                    Context: {node.promptContext}
-                  </p>
-                )}
-              </div>
-            </div>
+		return (
+			<div key={node.id} className="space-y-2 select-none">
+				{/* CATEGORY CARD */}
+				{isEditing ? (
+					<div className="space-y-3 bg-gray-50 dark:bg-gray-900 p-3.5 rounded-xl border border-yellow-200 mt-1 shadow-sm">
+						<input
+							type="text"
+							value={editName}
+							onChange={(e) => setEditName(e.target.value)}
+							className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-2.5 py-1.5 dark:text-white font-bold text-xs"
+						/>
+						<select
+							value={editParentId}
+							onChange={(e) => setEditParentId(e.target.value)}
+							className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-2.5 py-1.5 dark:text-white text-xs"
+						>
+							<option value="root">📁 Root Level</option>
+							{aiFolders
+								.filter((f) => f.id !== node.id)
+								.map((f) => (
+									<option key={f.id} value={f.id}>
+										{f.name}
+									</option>
+								))}
+						</select>
+						<textarea
+							rows={2}
+							value={editPromptContext}
+							onChange={(e) => setEditPromptContext(e.target.value)}
+							placeholder="AI prompt context keywords (optional)..."
+							className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-2.5 py-1.5 text-xs dark:text-white outline-none focus:ring-1 focus:ring-blue-500 resize-none font-sans"
+						/>
+						<div className="flex justify-end gap-2">
+							<button
+								type="button"
+								onClick={() => setEditingId(null)}
+								className="text-xs text-gray-400 font-semibold px-2 py-1 hover:text-gray-650"
+							>
+								Cancel
+							</button>
+							<button
+								type="button"
+								onClick={saveEdit}
+								className="text-xs bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-1 rounded-lg"
+							>
+								Save
+							</button>
+						</div>
+					</div>
+				) : (
+					<div
+						style={{ marginLeft: `${depth > 0 ? 12 : 0}px` }}
+						className={`flex items-start justify-between group py-2 px-3 border border-gray-100 dark:border-gray-700/50 rounded-xl hover:border-gray-200 dark:hover:border-gray-700 hover:bg-gray-50/50 dark:hover:bg-gray-850/10 transition-all ${
+							depth === 0
+								? "bg-white dark:bg-gray-800"
+								: "bg-gray-50/30 dark:bg-gray-900/10"
+						}`}
+					>
+						<div className="flex items-start gap-2 min-w-0">
+							{depth > 0 && (
+								<CornerDownRight
+									size={14}
+									className="text-gray-400 mt-1 shrink-0"
+								/>
+							)}
+							<div className="space-y-0.5 min-w-0">
+								<div className="flex items-center gap-1.5 flex-wrap">
+									<span
+										className={`font-semibold text-gray-805 dark:text-gray-200 ${depth === 0 ? "font-bold text-base text-gray-900 dark:text-white" : "text-xs"}`}
+									>
+										{node.name}
+									</span>
+									{node.promptContext && (
+										<Sparkles
+											size={depth === 0 ? 13 : 11}
+											className="text-purple-500 shrink-0"
+											title={`AI Context: ${node.promptContext}`}
+										/>
+									)}
+									<span
+										className={`bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-1.5 py-0.5 rounded font-semibold font-mono ${depth === 0 ? "text-[10px]" : "text-[9px]"}`}
+									>
+										{getBookmarksCount(node.id)} Items
+									</span>
+								</div>
+								{node.promptContext && (
+									<p className="text-[11px] text-gray-550 dark:text-gray-400 font-sans max-w-lg leading-relaxed pl-1">
+										Context: {node.promptContext}
+									</p>
+								)}
+							</div>
+						</div>
 
-            <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity pl-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setAddingUnderFolderId(node.id);
-                  setInlineFolderName("");
-                  setInlinePromptContext("");
-                }}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-750 rounded text-gray-400 hover:text-emerald-500 cursor-pointer"
-                title="Add subcategory"
-              >
-                <Plus size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => startEdit(node)}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-750 rounded text-gray-400 hover:text-blue-500 cursor-pointer"
-              >
-                <Edit2 size={13} />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteFolder(node.id, node.name)}
-                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-750 rounded text-gray-400 hover:text-red-500 cursor-pointer"
-              >
-                <Trash size={13} />
-              </button>
-            </div>
-          </div>
-        )}
+						<div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity pl-2 shrink-0">
+							<button
+								type="button"
+								onClick={() => {
+									setAddingUnderFolderId(node.id);
+									setInlineFolderName("");
+									setInlinePromptContext("");
+								}}
+								className="p-1 hover:bg-gray-100 dark:hover:bg-gray-750 rounded text-gray-400 hover:text-emerald-500 cursor-pointer"
+								title="Add subcategory"
+							>
+								<Plus size={13} />
+							</button>
+							<button
+								type="button"
+								onClick={() => startEdit(node)}
+								className="p-1 hover:bg-gray-100 dark:hover:bg-gray-750 rounded text-gray-400 hover:text-blue-500 cursor-pointer"
+							>
+								<Edit2 size={13} />
+							</button>
+							<button
+								type="button"
+								onClick={() => handleDeleteFolder(node.id, node.name)}
+								className="p-1 hover:bg-gray-100 dark:hover:bg-gray-750 rounded text-gray-400 hover:text-red-500 cursor-pointer"
+							>
+								<Trash size={13} />
+							</button>
+						</div>
+					</div>
+				)}
 
-        {/* Inline sub-category creation form under this node */}
-        {addingUnderFolderId === node.id && (
-          <div
-            style={{ marginLeft: `${(depth + 1) * 12}px` }}
-            className="flex items-start gap-2 animate-fade-in pr-2 mt-1"
-          >
-            <CornerDownRight
-              size={12}
-              className="text-gray-400 mt-1 shrink-0"
-            />
-            <div className="flex-1 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-dashed border-gray-200 dark:border-gray-750 max-w-md space-y-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-450 block">
-                New Subcategory under {node.name}
-              </span>
-              <input
-                type="text"
-                placeholder="Category name..."
-                value={inlineFolderName}
-                onChange={(e) => setInlineFolderName(e.target.value)}
-                className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2.5 py-1.5 text-xs dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleInlineCreateFolder(node.id);
-                  if (e.key === "Escape") setAddingUnderFolderId(null);
-                }}
-                autoFocus
-              />
-              <input
-                type="text"
-                placeholder="AI Context prompt keywords (optional)..."
-                value={inlinePromptContext}
-                onChange={(e) => setInlinePromptContext(e.target.value)}
-                className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2.5 py-1.5 text-[10px] dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleInlineCreateFolder(node.id);
-                  if (e.key === "Escape") setAddingUnderFolderId(null);
-                }}
-              />
-              <div className="flex justify-end gap-1.5 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setAddingUnderFolderId(null)}
-                  className="text-[10px] text-gray-450 hover:text-gray-600 font-semibold px-2 py-0.5 rounded hover:bg-gray-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleInlineCreateFolder(node.id)}
-                  className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 cursor-pointer"
-                >
-                  <Check size={10} />
-                  <span>Create</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+				{/* Inline sub-category creation form under this node */}
+				{addingUnderFolderId === node.id && (
+					<div
+						style={{ marginLeft: `${(depth + 1) * 12}px` }}
+						className="flex items-start gap-2 animate-fade-in pr-2 mt-1"
+					>
+						<CornerDownRight
+							size={12}
+							className="text-gray-400 mt-1 shrink-0"
+						/>
+						<div className="flex-1 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-dashed border-gray-200 dark:border-gray-750 max-w-md space-y-2">
+							<span className="text-[10px] font-bold uppercase tracking-wider text-gray-450 block">
+								New Subcategory under {node.name}
+							</span>
+							<input
+								type="text"
+								placeholder="Category name..."
+								value={inlineFolderName}
+								onChange={(e) => setInlineFolderName(e.target.value)}
+								className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2.5 py-1.5 text-xs dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+								onKeyDown={(e) => {
+									if (e.key === "Enter") handleInlineCreateFolder(node.id);
+									if (e.key === "Escape") setAddingUnderFolderId(null);
+								}}
+							/>
+							<input
+								type="text"
+								placeholder="AI Context prompt keywords (optional)..."
+								value={inlinePromptContext}
+								onChange={(e) => setInlinePromptContext(e.target.value)}
+								className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded px-2.5 py-1.5 text-[10px] dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+								onKeyDown={(e) => {
+									if (e.key === "Enter") handleInlineCreateFolder(node.id);
+									if (e.key === "Escape") setAddingUnderFolderId(null);
+								}}
+							/>
+							<div className="flex justify-end gap-1.5 mt-1">
+								<button
+									type="button"
+									onClick={() => setAddingUnderFolderId(null)}
+									className="text-[10px] text-gray-450 hover:text-gray-600 font-semibold px-2 py-0.5 rounded hover:bg-gray-100 cursor-pointer"
+								>
+									Cancel
+								</button>
+								<button
+									type="button"
+									onClick={() => handleInlineCreateFolder(node.id)}
+									className="text-[10px] bg-blue-600 hover:bg-blue-700 text-white font-semibold px-2.5 py-0.5 rounded flex items-center gap-1 cursor-pointer"
+								>
+									<Check size={10} />
+									<span>Create</span>
+								</button>
+							</div>
+						</div>
+					</div>
+				)}
 
-        {/* Sub-nodes recursion (deeper nesting support) */}
-        {hasChildren && (
-          <div className="pl-3 border-l border-dashed border-gray-200 dark:border-gray-750 space-y-3 mt-2 ml-4">
-            {subs.map((child) => renderCategoryNode(child, depth + 1))}
-          </div>
-        )}
-      </div>
-    );
-  };
+				{/* Sub-nodes recursion (deeper nesting support) */}
+				{hasChildren && (
+					<div className="pl-3 border-l border-dashed border-gray-200 dark:border-gray-750 space-y-3 mt-2 ml-4">
+						{subs.map((child) => renderCategoryNode(child, depth + 1))}
+					</div>
+				)}
+			</div>
+		);
+	};
 
-  return (
-    <div className="h-full flex flex-col space-y-6 max-w-5xl mx-auto">
-      {/* HEADER CONTROLS */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold dark:text-white tracking-tight">
-            AI Categories Blueprint
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400">
-            Define folder structure & AI prompts context to guide organization.
-          </p>
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto self-end flex-wrap">
-          <button
-            type="button"
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Are you sure you want to reload folder structures from your live Chrome folders? This will replace your current AI blueprint tree (prompt contexts for matching folder names will be preserved).",
-                )
-              ) {
-                reloadAiFoldersFromReal();
-              }
-            }}
-            className="flex-1 sm:flex-initial bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-850 dark:text-white px-4 py-2.5 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-1.5 border border-gray-250 dark:border-gray-700 cursor-pointer"
-          >
-            ↺ Reload from Chrome
-          </button>
+	return (
+		<div className="h-full flex flex-col space-y-6 max-w-5xl mx-auto">
+			{/* HEADER CONTROLS */}
+			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+				<div>
+					<h2 className="text-3xl font-bold dark:text-white tracking-tight">
+						AI Categories Blueprint
+					</h2>
+					<p className="text-gray-500 dark:text-gray-400">
+						Define folder structure & AI prompts context to guide organization.
+					</p>
+				</div>
+				<div className="flex gap-2 w-full sm:w-auto self-end flex-wrap">
+					<button
+						type="button"
+						onClick={() => {
+							if (
+								window.confirm(
+									"Are you sure you want to reload folder structures from your live Chrome folders? This will replace your current AI blueprint tree (prompt contexts for matching folder names will be preserved).",
+								)
+							) {
+								reloadAiFoldersFromReal();
+							}
+						}}
+						className="flex-1 sm:flex-initial bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-850 dark:text-white px-4 py-2.5 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-1.5 border border-gray-250 dark:border-gray-700 cursor-pointer"
+					>
+						↺ Reload from Chrome
+					</button>
 
-          <button
-            type="button"
-            onClick={handlePropose}
-            disabled={isProposing}
-            className="flex-1 sm:flex-initial bg-purple-100 hover:bg-purple-200 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-4 py-2.5 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <Sparkles size={16} />
-            {isProposing ? "Analyzing..." : "AI Propose Layout"}
-          </button>
+					<button
+						type="button"
+						onClick={handlePropose}
+						disabled={isProposing}
+						className="flex-1 sm:flex-initial bg-purple-100 hover:bg-purple-200 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-4 py-2.5 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-1.5 cursor-pointer"
+					>
+						<Sparkles size={16} />
+						{isProposing ? "Analyzing..." : "AI Propose Layout"}
+					</button>
 
-          <button
-            type="button"
-            onClick={handleAutoSort}
-            disabled={isSorting}
-            className="flex-1 sm:flex-initial bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
-          >
-            <Sparkles size={16} />
-            {isSorting ? "Organizing..." : "AI Auto-Sort"}
-          </button>
-        </div>
-      </div>
+					<button
+						type="button"
+						onClick={handleAutoSort}
+						disabled={isSorting}
+						className="flex-1 sm:flex-initial bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-medium transition-all text-sm flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+					>
+						<Sparkles size={16} />
+						{isSorting ? "Organizing..." : "AI Auto-Sort"}
+					</button>
+				</div>
+			</div>
 
-      {/* WARNING BANNER */}
-      <div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-250 dark:border-amber-900/30 rounded-2xl p-4 flex items-start gap-3">
-        <HelpCircle
-          className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5"
-          size={20}
-        />
-        <div>
-          <h4 className="font-semibold text-amber-900 dark:text-amber-400 text-sm">
-            AI Blueprint Context Definition Layer
-          </h4>
-          <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 leading-relaxed">
-            This is your AI folder blueprint. Changes here only affect how the
-            AI sorts bookmarks (by defining categories and prompt contexts) —
-            not your real Chrome folders. Use the <strong>Organize</strong> tab
-            to manage real folders.
-          </p>
-        </div>
-      </div>
+			{/* WARNING BANNER */}
+			<div className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-250 dark:border-amber-900/30 rounded-2xl p-4 flex items-start gap-3">
+				<HelpCircle
+					className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5"
+					size={20}
+				/>
+				<div>
+					<h4 className="font-semibold text-amber-900 dark:text-amber-400 text-sm">
+						AI Blueprint Context Definition Layer
+					</h4>
+					<p className="text-xs text-amber-700 dark:text-amber-300 mt-1 leading-relaxed">
+						This is your AI folder blueprint. Changes here only affect how the
+						AI sorts bookmarks (by defining categories and prompt contexts) —
+						not your real Chrome folders. Use the <strong>Organize</strong> tab
+						to manage real folders.
+					</p>
+				</div>
+			</div>
 
-      {/* PROPOSAL DRAWER */}
-      {proposals.length > 0 && (
-        <div className="bg-purple-50/50 dark:bg-purple-900/10 border border-purple-200/50 dark:border-purple-800/40 rounded-2xl p-6">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h3 className="font-bold text-lg text-purple-950 dark:text-purple-300 flex items-center gap-2">
-                <Sparkles size={20} className="text-purple-600 animate-pulse" />
-                AI Bookmark Folder Proposals
-              </h3>
-              <p className="text-xs text-purple-700 dark:text-purple-400 mt-1">
-                The model analyzed your current bookmark set and suggested these
-                specific visual folder buckets. Customize their attributes
-                before applying.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setProposals([])}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <XCircle size={18} />
-            </button>
-          </div>
+			{/* PROPOSAL DRAWER */}
+			{proposals.length > 0 && (
+				<div className="bg-purple-50/50 dark:bg-purple-900/10 border border-purple-200/50 dark:border-purple-800/40 rounded-2xl p-6">
+					<div className="flex justify-between items-start mb-4">
+						<div>
+							<h3 className="font-bold text-lg text-purple-950 dark:text-purple-300 flex items-center gap-2">
+								<Sparkles size={20} className="text-purple-600 animate-pulse" />
+								AI Bookmark Folder Proposals
+							</h3>
+							<p className="text-xs text-purple-700 dark:text-purple-400 mt-1">
+								The model analyzed your current bookmark set and suggested these
+								specific visual folder buckets. Customize their attributes
+								before applying.
+							</p>
+						</div>
+						<button
+							type="button"
+							onClick={() => setProposals([])}
+							className="text-gray-400 hover:text-gray-600"
+						>
+							<XCircle size={18} />
+						</button>
+					</div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {proposals.map((prop, idx) => (
-              <div
-                key={idx}
-                className="bg-white dark:bg-gray-800 border border-purple-100 dark:border-purple-900/40 p-4 rounded-xl relative group shadow-sm flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
-                      Suggested Folder
-                    </span>
-                    <button
-                      onClick={() => handleRemoveProposalItem(idx)}
-                      className="text-gray-300 group-hover:text-red-500 hover:bg-gray-100 p-1 rounded-md transition-all"
-                    >
-                      <Trash size={12} />
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    value={prop.name}
-                    onChange={(e) =>
-                      handleEditProposalValue(idx, "name", e.target.value)
-                    }
-                    className="font-bold text-gray-950 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-1 mb-2 bg-transparent focus:border-purple-500 focus:outline-none w-full text-sm"
-                  />
-                  <textarea
-                    rows={2}
-                    value={prop.promptContext}
-                    onChange={(e) =>
-                      handleEditProposalValue(
-                        idx,
-                        "promptContext",
-                        e.target.value,
-                      )
-                    }
-                    className="text-xs text-gray-500 dark:text-gray-400 font-sans leading-relaxed bg-transparent focus:outline-none focus:border-purple-400 w-full resize-none mt-1 border border-transparent rounded-md p-1 hover:border-gray-100 focus:bg-gray-50 dark:focus:bg-gray-900"
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+						{proposals.map((prop, idx) => (
+							<div
+								key={prop.name}
+								className="bg-white dark:bg-gray-800 border border-purple-100 dark:border-purple-900/40 p-4 rounded-xl relative group shadow-sm flex flex-col justify-between"
+							>
+								<div>
+									<div className="flex justify-between items-center mb-2">
+										<span className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
+											Suggested Folder
+										</span>
+										<button
+											type="button"
+											onClick={() => handleRemoveProposalItem(idx)}
+											className="text-gray-300 group-hover:text-red-500 hover:bg-gray-100 p-1 rounded-md transition-all"
+										>
+											<Trash size={12} />
+										</button>
+									</div>
+									<input
+										type="text"
+										value={prop.name}
+										onChange={(e) =>
+											handleEditProposalValue(idx, "name", e.target.value)
+										}
+										className="font-bold text-gray-950 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-1 mb-2 bg-transparent focus:border-purple-500 focus:outline-none w-full text-sm"
+									/>
+									<textarea
+										rows={2}
+										value={prop.promptContext}
+										onChange={(e) =>
+											handleEditProposalValue(
+												idx,
+												"promptContext",
+												e.target.value,
+											)
+										}
+										className="text-xs text-gray-500 dark:text-gray-400 font-sans leading-relaxed bg-transparent focus:outline-none focus:border-purple-400 w-full resize-none mt-1 border border-transparent rounded-md p-1 hover:border-gray-100 focus:bg-gray-50 dark:focus:bg-gray-900"
+									/>
+								</div>
+							</div>
+						))}
+					</div>
 
-          <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-purple-100 dark:border-purple-900/20">
-            <button
-              type="button"
-              onClick={() => setProposals([])}
-              className="text-xs font-semibold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              Discard Recommendations
-            </button>
-            <button
-              type="button"
-              onClick={applyProposals}
-              className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all"
-            >
-              Accept & Apply Categories
-            </button>
-          </div>
-        </div>
-      )}
+					<div className="flex justify-end gap-3 mt-4 pt-4 border-t border-purple-100 dark:border-purple-900/20">
+						<button
+							type="button"
+							onClick={() => setProposals([])}
+							className="text-xs font-semibold text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+						>
+							Discard Recommendations
+						</button>
+						<button
+							type="button"
+							onClick={applyProposals}
+							className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all"
+						>
+							Accept & Apply Categories
+						</button>
+					</div>
+				</div>
+			)}
 
-      {/* FULL-WIDTH HIERARCHY STRUCTURE */}
-      <div className="w-full bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col min-h-[400px]">
-        <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3 mb-4 flex-wrap gap-2">
-          <h3 className="font-bold text-lg dark:text-white flex items-center gap-2">
-            <FolderTree size={20} className="text-emerald-500" />
-            Hierarchy Structure
-          </h3>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setAddingUnderFolderId("root");
-                setInlineFolderName("");
-                setInlinePromptContext("");
-              }}
-              className="text-xs bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-900/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 font-semibold cursor-pointer"
-            >
-              <Plus size={14} />
-              <span>Add Root Category</span>
-            </button>
-            <span className="text-[10px] bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded-md text-gray-500 font-mono">
-              Count: {aiFolders.length} Nodes
-            </span>
-          </div>
-        </div>
+			{/* FULL-WIDTH HIERARCHY STRUCTURE */}
+			<div className="w-full bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col min-h-[400px]">
+				<div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3 mb-4 flex-wrap gap-2">
+					<h3 className="font-bold text-lg dark:text-white flex items-center gap-2">
+						<FolderTree size={20} className="text-emerald-500" />
+						Hierarchy Structure
+					</h3>
+					<div className="flex items-center gap-3">
+						<button
+							type="button"
+							onClick={() => {
+								setAddingUnderFolderId("root");
+								setInlineFolderName("");
+								setInlinePromptContext("");
+							}}
+							className="text-xs bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-900/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 font-semibold cursor-pointer"
+						>
+							<Plus size={14} />
+							<span>Add Root Category</span>
+						</button>
+						<span className="text-[10px] bg-gray-100 dark:bg-gray-900 px-3 py-1 rounded-md text-gray-500 font-mono">
+							Count: {aiFolders.length} Nodes
+						</span>
+					</div>
+				</div>
 
-        <div className="flex-1 overflow-y-auto space-y-4">
-          {/* Inline root creation */}
-          {addingUnderFolderId === "root" && (
-            <div className="border border-dashed border-blue-200 dark:border-blue-900/40 p-4 rounded-xl bg-blue-50/10 max-w-lg space-y-2.5 animate-fade-in mb-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-450 block">
-                Create New Root Category
-              </span>
-              <input
-                type="text"
-                placeholder="Category name (e.g. Design Inspiration)..."
-                value={inlineFolderName}
-                onChange={(e) => setInlineFolderName(e.target.value)}
-                className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-xs dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleInlineCreateFolder(null);
-                  if (e.key === "Escape") setAddingUnderFolderId(null);
-                }}
-                autoFocus
-              />
-              <input
-                type="text"
-                placeholder="AI Context prompt keywords (optional)..."
-                value={inlinePromptContext}
-                onChange={(e) => setInlinePromptContext(e.target.value)}
-                className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleInlineCreateFolder(null);
-                  if (e.key === "Escape") setAddingUnderFolderId(null);
-                }}
-              />
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setAddingUnderFolderId(null)}
-                  className="text-xs text-gray-400 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleInlineCreateFolder(null)}
-                  className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer shadow"
-                >
-                  <Check size={12} />
-                  <span>Create Category</span>
-                </button>
-              </div>
-            </div>
-          )}
-          {aiFolders.length === 0 && addingUnderFolderId !== "root" ? (
-            <div className="text-center py-20 text-gray-400 italic">
-              No categories blueprint defined. Select "AI Propose Layout" or
-              click "Reload from Chrome" to bootstrap!
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {rootFolders.map((root) => renderCategoryNode(root))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+				<div className="flex-1 overflow-y-auto space-y-4">
+					{/* Inline root creation */}
+					{addingUnderFolderId === "root" && (
+						<div className="border border-dashed border-blue-200 dark:border-blue-900/40 p-4 rounded-xl bg-blue-50/10 max-w-lg space-y-2.5 animate-fade-in mb-2">
+							<span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-450 block">
+								Create New Root Category
+							</span>
+							<input
+								type="text"
+								placeholder="Category name (e.g. Design Inspiration)..."
+								value={inlineFolderName}
+								onChange={(e) => setInlineFolderName(e.target.value)}
+								className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-xs dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+								onKeyDown={(e) => {
+									if (e.key === "Enter") handleInlineCreateFolder(null);
+									if (e.key === "Escape") setAddingUnderFolderId(null);
+								}}
+							/>
+							<input
+								type="text"
+								placeholder="AI Context prompt keywords (optional)..."
+								value={inlinePromptContext}
+								onChange={(e) => setInlinePromptContext(e.target.value)}
+								className="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-2 text-[11px] dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+								onKeyDown={(e) => {
+									if (e.key === "Enter") handleInlineCreateFolder(null);
+									if (e.key === "Escape") setAddingUnderFolderId(null);
+								}}
+							/>
+							<div className="flex justify-end gap-2 pt-1">
+								<button
+									type="button"
+									onClick={() => setAddingUnderFolderId(null)}
+									className="text-xs text-gray-400 font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 cursor-pointer"
+								>
+									Cancel
+								</button>
+								<button
+									type="button"
+									onClick={() => handleInlineCreateFolder(null)}
+									className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer shadow"
+								>
+									<Check size={12} />
+									<span>Create Category</span>
+								</button>
+							</div>
+						</div>
+					)}
+					{aiFolders.length === 0 && addingUnderFolderId !== "root" ? (
+						<div className="text-center py-20 text-gray-400 italic">
+							No categories blueprint defined. Select "AI Propose Layout" or
+							click "Reload from Chrome" to bootstrap!
+						</div>
+					) : (
+						<div className="space-y-3">
+							{rootFolders.map((root) => renderCategoryNode(root))}
+						</div>
+					)}
+				</div>
+			</div>
+		</div>
+	);
 }

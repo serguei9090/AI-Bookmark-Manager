@@ -1,55 +1,55 @@
 export type Bookmark = {
-  id: string;
-  title: string;
-  url: string;
-  folderId: string | null;
-  tags: string[];
-  summary: string;
-  dateAdded: number;
-  favicon?: string;
-  manuallyAssigned?: boolean;
+	id: string;
+	title: string;
+	url: string;
+	folderId: string | null;
+	tags: string[];
+	summary: string;
+	dateAdded: number;
+	favicon?: string;
+	manuallyAssigned?: boolean;
 };
 
 export type Folder = {
-  id: string;
-  parentId: string | null; // supports subfolders nesting nested trees
-  name: string;
-  promptContext: string;
+	id: string;
+	parentId: string | null; // supports subfolders nesting nested trees
+	name: string;
+	promptContext: string;
 };
 
 export type AIProvider = "openai" | "gemini" | "ollama" | "lmstudio" | "custom";
 
 export type Settings = {
-  provider: AIProvider;
-  model: string;
-  customUrl: string;
-  apiKey: string;
-  systemPrompt: string;
-  darkMode: boolean;
-  temperature: number;
-  maxTokens: number;
-  viewMode: "extension" | "dashboard"; // simulation layout matching user requested chrome extension concept
-  geminiUrl?: string;
-  geminiApiKey?: string;
-  openaiUrl?: string;
-  openaiApiKey?: string;
-  ollamaUrl?: string;
-  ollamaApiKey?: string;
-  lmstudioUrl?: string;
-  lmstudioApiKey?: string;
-  customApiKey?: string;
-  maxHistoryEntries?: number;
+	provider: AIProvider;
+	model: string;
+	customUrl: string;
+	apiKey: string;
+	systemPrompt: string;
+	darkMode: boolean;
+	temperature: number;
+	maxTokens: number;
+	viewMode: "extension" | "dashboard"; // simulation layout matching user requested chrome extension concept
+	geminiUrl?: string;
+	geminiApiKey?: string;
+	openaiUrl?: string;
+	openaiApiKey?: string;
+	ollamaUrl?: string;
+	ollamaApiKey?: string;
+	lmstudioUrl?: string;
+	lmstudioApiKey?: string;
+	customApiKey?: string;
+	maxHistoryEntries?: number;
 };
 
 export type Proposal = {
-  name: string;
-  promptContext: string;
+	name: string;
+	promptContext: string;
 };
 
 export type HistoryEntry = {
-  id: string;
-  bookmarks: Bookmark[];
-  folders: Folder[];
-  timestamp: number;
-  description: string;
+	id: string;
+	bookmarks: Bookmark[];
+	folders: Folder[];
+	timestamp: number;
+	description: string;
 };
