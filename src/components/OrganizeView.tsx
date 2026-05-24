@@ -142,18 +142,27 @@ export function OrganizeView() {
 		setExpandedFolders((prev) => ({ ...prev, [id]: !prev[id] }));
 	};
 
-	const getFolderBookmarkCount = useCallback(
-		(folderId: string): number => {
+	const getFolderBookmarkCounts = useCallback(
+		(folderId: string) => {
 			const getDescendantFolderIds = (fid: string): string[] => {
 				const children = folders.filter((f) => f.parentId === fid);
 				return [fid, ...children.flatMap((c) => getDescendantFolderIds(c.id))];
 			};
 			const allFolderIds = getDescendantFolderIds(folderId);
-			return bookmarks.filter(
+			const direct = bookmarks.filter((b) => b.folderId === folderId).length;
+			const total = bookmarks.filter(
 				(b) => b.folderId !== null && allFolderIds.includes(b.folderId),
 			).length;
+			return { direct, total, hasSubfolders: allFolderIds.length > 1 };
 		},
 		[folders, bookmarks],
+	);
+
+	const getFolderBookmarkCount = useCallback(
+		(folderId: string): number => {
+			return getFolderBookmarkCounts(folderId).total;
+		},
+		[getFolderBookmarkCounts],
 	);
 
 	// Find folders that recursively contain 0 bookmarks (excluding Chrome root folders)
@@ -640,7 +649,13 @@ export function OrganizeView() {
 							<span className="truncate text-xs flex items-center gap-1">
 								<span className="truncate">{node.name}</span>
 								<span className="text-[10px] text-gray-400 dark:text-gray-500 font-normal shrink-0">
-									({getFolderBookmarkCount(node.id)})
+									({(() => {
+										const { direct, total, hasSubfolders } =
+											getFolderBookmarkCounts(node.id);
+										return hasSubfolders && total !== direct
+											? `${direct} / ${total}`
+											: `${direct}`;
+									})()})
 								</span>
 								{isFolderEmpty && (
 									<span className="text-[9px] bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-450 px-1.5 py-0.2 rounded font-medium shrink-0 scale-90 origin-left border border-amber-100 dark:border-amber-900/30">
@@ -884,9 +899,16 @@ export function OrganizeView() {
 									<span className="text-xs font-normal text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-md">
 										Filter:{" "}
 										{selectedFolderFilter === "uncategorized"
-											? "Uncategorized"
-											: folders.find((f) => f.id === selectedFolderFilter)
-													?.name || "Selected Folder"}
+											? `Uncategorized (${bookmarks.filter((b) => b.folderId === null).length} items)`
+											: (() => {
+													const f = folders.find(
+														(f) => f.id === selectedFolderFilter,
+													);
+													if (!f) return "Selected Folder";
+													const { direct, total, hasSubfolders } =
+														getFolderBookmarkCounts(f.id);
+													return `${f.name} (${direct} direct${hasSubfolders && total !== direct ? `, ${total} total` : ""} items)`;
+												})()}
 									</span>
 								)}
 							</h2>
@@ -1116,7 +1138,13 @@ export function OrganizeView() {
 																</span>
 															</div>
 															<span className="text-[10px] text-gray-400 group-hover/item:text-gray-600 font-mono shrink-0">
-																({getFolderBookmarkCount(f.id)})
+																({(() => {
+																	const { direct, total, hasSubfolders } =
+																		getFolderBookmarkCounts(f.id);
+																	return hasSubfolders && total !== direct
+																		? `${direct} / ${total}`
+																		: `${direct}`;
+																})()})
 															</span>
 														</button>
 													))}

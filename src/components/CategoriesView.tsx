@@ -258,8 +258,49 @@ export function CategoriesView() {
 		return map;
 	}, [aiFolders]);
 
-	const getBookmarksCount = (folderId: string) => {
-		return bookmarks.filter((b) => b.folderId === folderId).length;
+	const getDescendantAiFolderIds = (aiFolderId: string): string[] => {
+		const children = aiFolders.filter((f) => f.parentId === aiFolderId);
+		return [
+			aiFolderId,
+			...children.flatMap((c) => getDescendantAiFolderIds(c.id)),
+		];
+	};
+
+	const getBookmarksCount = (aiFolderId: string) => {
+		const descendantIds = getDescendantAiFolderIds(aiFolderId);
+		const realFolderIds = descendantIds
+			.map((id) => getRealFolderId(id))
+			.filter((id): id is string => id !== null);
+
+		const directAiId = aiFolderId;
+		const directRealId = getRealFolderId(aiFolderId);
+
+		const directCount = bookmarks.filter(
+			(b) =>
+				b.folderId === directAiId ||
+				(directRealId !== null && b.folderId === directRealId),
+		).length;
+
+		const totalCount = bookmarks.filter(
+			(b) =>
+				b.folderId !== null &&
+				(descendantIds.includes(b.folderId) ||
+					realFolderIds.includes(b.folderId)),
+		).length;
+
+		return {
+			direct: directCount,
+			total: totalCount,
+			hasSubfolders: descendantIds.length > 1,
+		};
+	};
+
+	const renderBookmarkCount = (nodeId: string) => {
+		const { direct, total, hasSubfolders } = getBookmarksCount(nodeId);
+		if (hasSubfolders && total !== direct) {
+			return `${direct} (${total} total) Items`;
+		}
+		return `${direct} Items`;
 	};
 
 	// Helper to edit proposal items
@@ -365,7 +406,7 @@ export function CategoriesView() {
 									<span
 										className={`bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 px-1.5 py-0.5 rounded font-semibold font-mono ${depth === 0 ? "text-[10px]" : "text-[9px]"}`}
 									>
-										{getBookmarksCount(node.id)} Items
+										{renderBookmarkCount(node.id)}
 									</span>
 								</div>
 								{node.promptContext && (
