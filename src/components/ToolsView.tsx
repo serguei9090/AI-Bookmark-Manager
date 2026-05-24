@@ -61,6 +61,33 @@ const performSingleCheck = async (
 	signal: AbortSignal,
 	timeoutMs = 8000,
 ): Promise<ScanResult> => {
+	if (isExtension) {
+		return new Promise((resolve) => {
+			const onAbort = () => {
+				resolve({ alive: false, status: 499, message: "Aborted" });
+			};
+			signal.addEventListener("abort", onAbort);
+
+			chrome.runtime.sendMessage(
+				{ type: "CHECK_LINK", url, timeoutMs },
+				(res) => {
+					signal.removeEventListener("abort", onAbort);
+					if (chrome.runtime.lastError) {
+						resolve({
+							alive: false,
+							status: 500,
+							message: "Extension communication error",
+						});
+					} else {
+						resolve(
+							res || { alive: false, status: 500, message: "No response" },
+						);
+					}
+				},
+			);
+		});
+	}
+
 	const controller = new AbortController();
 	const onAbort = () => controller.abort();
 	signal.addEventListener("abort", onAbort);

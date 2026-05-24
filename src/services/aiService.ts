@@ -410,3 +410,107 @@ ${bookmarks.map((b) => `- URL: ${b.url}, Title: ${b.title}`).join("\n")}`;
 	};
 	return parsed.proposals ?? [];
 }
+
+/** Unified connection tester to verify API endpoints with given settings */
+export async function testConnection(settings: Settings): Promise<void> {
+	const { url: baseUrl, apiKey } = getProviderConfig(settings);
+	const base = baseUrl.replace(/\/$/, "");
+
+	let testUrl = "";
+	const headers: Record<string, string> = {};
+
+	if (settings.provider === "gemini") {
+		const isFullUrl = base.includes("/v1");
+		testUrl = isFullUrl
+			? `${base}/models?key=${apiKey}`
+			: `${base}/v1beta/models?key=${apiKey}`;
+	} else if (settings.provider === "openai") {
+		testUrl = `${base}/models`;
+		if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+	} else if (settings.provider === "ollama") {
+		testUrl = `${base}/api/tags`;
+	} else {
+		testUrl = base.includes("/v1") ? `${base}/models` : `${base}/v1/models`;
+		if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+	}
+
+	const res = await fetch(testUrl, { headers });
+	if (!res.ok) throw new Error(`API returned HTTP ${res.status}`);
+	const data = await res.json();
+
+	if (settings.provider === "ollama" || settings.provider === "gemini") {
+		if (!data.models)
+			throw new Error("Invalid response format: 'models' field expected");
+	} else {
+		if (!data.data)
+			throw new Error("Invalid response format: 'data' field expected");
+	}
+}
+
+/** Unified model fetcher to load live models from API endpoints */
+export async function fetchModels(settings: Settings): Promise<{
+	models: string[];
+	metaMap: Record<string, { outputTokenLimit?: number }>;
+}> {
+	const { url: baseUrl, apiKey } = getProviderConfig(settings);
+	const base = baseUrl.replace(/\/$/, "");
+
+	let models: string[] = [];
+	const metaMap: Record<string, { outputTokenLimit?: number }> = {};
+
+	if (settings.provider === "gemini") {
+		const isFullUrl = base.includes("/v1");
+		const listUrl = isFullUrl
+			? `${base}/models?key=${apiKey}`
+			: `${base}/v1beta/models?key=${apiKey}`;
+		const res = await fetch(listUrl);
+		if (!res.ok) throw new Error(`Gemini API returned ${res.status}`);
+		const data = await res.json();
+
+		const modelsList = (data.models || []).filter(
+			(m: { supportedGenerationMethods?: string[] }) =>
+				(m.supportedGenerationMethods || []).includes("generateContent"),
+		);
+
+		for (const m of modelsList) {
+			const name = (m.name || "").replace(/^models\//, "");
+			if (name) {
+				metaMap[name] = { outputTokenLimit: m.outputTokenLimit };
+			}
+		}
+
+		models = Object.keys(metaMap).sort();
+	} else if (settings.provider === "openai") {
+		const url = base.endsWith("/v1") ? `${base}/models` : `${base}/v1/models`;
+		const res = await fetch(url, {
+			headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+		});
+		if (!res.ok) throw new Error(`OpenAI API returned ${res.status}`);
+		const data = await res.json();
+		models = (data.data || [])
+			.map((m: { id?: string }) => m.id)
+			.filter(Boolean)
+			.sort();
+	} else if (settings.provider === "ollama") {
+		const res = await fetch(`${base}/api/tags`);
+		if (!res.ok) throw new Error(`Ollama returned ${res.status}`);
+		const data = await res.json();
+		models = (data.models || [])
+			.map((m: { name?: string }) => m.name)
+			.filter(Boolean)
+			.sort();
+	} else {
+		const url = base.includes("/v1") ? `${base}/models` : `${base}/v1/models`;
+		const headers: Record<string, string> = {};
+		if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+		const res = await fetch(url, { headers });
+		if (!res.ok) throw new Error(`Endpoint returned ${res.status}`);
+		const data = await res.json();
+		models = (data.data || [])
+			.map((m: { id?: string }) => m.id)
+			.filter(Boolean)
+			.sort();
+	}
+
+	return { models, metaMap };
+}

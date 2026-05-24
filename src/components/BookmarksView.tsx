@@ -25,6 +25,7 @@ export function BookmarksView() {
 		deleteBookmark,
 		addBookmark,
 		settings,
+		triggerAutoOrganize,
 	} = useAppContext();
 	const [search, setSearch] = useState("");
 	const [selectedFolderFilter, setSelectedFolderFilter] =
@@ -599,6 +600,41 @@ export function BookmarksView() {
 													className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400"
 												/>
 											</a>
+											{(() => {
+												const effectiveFolderId =
+													settings.monitoredFolderId ||
+													folders.find((f) => f.name.toLowerCase() === "tosort")
+														?.id ||
+													"";
+												const isFailedOrUnorganized =
+													bm.aiFailed ||
+													(settings.autoOrganizeEnabled &&
+														effectiveFolderId !== "" &&
+														bm.folderId === effectiveFolderId &&
+														!bm.summary);
+												if (!isFailedOrUnorganized) return null;
+												return (
+													<button
+														type="button"
+														className="text-[10px] font-bold bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-900/30 px-1.5 py-0.5 rounded cursor-pointer transition-all active:scale-95 shrink-0 flex items-center gap-1 ml-1.5"
+														title="AI Auto-Organize Failed. Click to retry."
+														onClick={(e) => {
+															e.preventDefault();
+															e.stopPropagation();
+															triggerAutoOrganize(
+																bm.id,
+																bm.title,
+																bm.url,
+																bm.folderId,
+																true,
+															);
+														}}
+													>
+														<AlertCircle size={12} className="text-red-500" />
+														<span>Retry</span>
+													</button>
+												);
+											})()}
 										</div>
 
 										<p className="text-xs text-gray-600 dark:text-gray-300 font-mono mt-1 break-all select-all flex items-center gap-1">

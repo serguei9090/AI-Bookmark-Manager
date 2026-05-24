@@ -13,6 +13,8 @@ import type {
 	HistoryEntry,
 	LastScanResultsState,
 	Settings,
+	Toast,
+	ToastType,
 } from "./types";
 
 // Initial Data
@@ -213,6 +215,16 @@ type AppContextType = {
 	setLastScanResults: React.Dispatch<
 		React.SetStateAction<LastScanResultsState | null>
 	>;
+	triggerAutoOrganize: (
+		id: string,
+		title: string,
+		url: string,
+		folderId: string | null,
+		force?: boolean,
+	) => Promise<void>;
+	toasts: Toast[];
+	addToast: (message: string, type: ToastType) => void;
+	removeToast: (id: string) => void;
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -266,6 +278,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 	>([]);
 	const [lastScanResults, setLastScanResults] =
 		useState<LastScanResultsState | null>(null);
+	const [toasts, setToasts] = useState<Toast[]>([]);
+
+	const addToast = useCallback((message: string, type: ToastType) => {
+		const id = crypto.randomUUID();
+		setToasts((prev) => [...prev, { id, message, type }]);
+		setTimeout(() => {
+			setToasts((prev) => prev.filter((t) => t.id !== id));
+		}, 4000);
+	}, []);
+
+	const removeToast = useCallback((id: string) => {
+		setToasts((prev) => prev.filter((t) => t.id !== id));
+	}, []);
 
 	const initializeHistoryIfEmpty = useCallback(
 		(bms: Bookmark[], fols: Folder[]) => {
@@ -325,6 +350,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 									dateAdded: node.dateAdded || Date.now(),
 									manuallyAssigned: meta.manuallyAssigned || false,
 									ignoredDead: meta.ignoredDead || false,
+									aiFailed: meta.aiFailed || false,
 								});
 							}
 						}
@@ -380,6 +406,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 					manuallyAssigned:
 						meta.manuallyAssigned || bm.manuallyAssigned || false,
 					ignoredDead: meta.ignoredDead || bm.ignoredDead || false,
+					aiFailed: meta.aiFailed || bm.aiFailed || false,
 				};
 			});
 
@@ -1495,8 +1522,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 	}, []);
 
 	const triggerAutoOrganize = useCallback(
-		async (id: string, title: string, url: string, folderId: string | null) => {
-			if (!settings.autoOrganizeEnabled) return;
+		async (
+			id: string,
+			title: string,
+			url: string,
+			folderId: string | null,
+			force = false,
+		) => {
+			if (!settings.autoOrganizeEnabled && !force) return;
 
 			let targetMonitoredId = settings.monitoredFolderId || "";
 
@@ -1522,7 +1555,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 				}
 			}
 
-			if (folderId !== targetMonitoredId) return;
+			if (!force && folderId !== targetMonitoredId) return;
+
+			addToast(`AI Auto-Organizing: "${title}"...`, "info");
 
 			try {
 				const bmObj: Bookmark = {
@@ -1550,10 +1585,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 				);
 
 				let destRealFolderId: string | null = null;
+				let destFolderName = "";
 				const matchedAiFolderId = sortingMapping[id];
 				if (matchedAiFolderId) {
 					const aiFolder = aiFolders.find((f) => f.id === matchedAiFolderId);
 					if (aiFolder) {
+						destFolderName = aiFolder.name;
 						const existingReal = folders.find(
 							(rf) =>
 								rf.id === aiFolder.id ||
@@ -1584,6 +1621,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 								summary: aiResult.summary,
 								manuallyAssigned: false,
 								ignoredDead: false,
+								aiFailed: false,
 							};
 							return setStorageItem("bm_metadata_bookmarks", meta);
 						},
@@ -1612,6 +1650,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 							summary: aiResult.summary,
 							manuallyAssigned: false,
 							ignoredDead: false,
+							aiFailed: false,
 						};
 						setStorageItem("bm_metadata_bookmarks", meta).then(() => {
 							setBookmarks((prev) =>
@@ -1622,6 +1661,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 												tags: aiResult.tags,
 												summary: aiResult.summary,
 												folderId: destRealFolderId,
+												aiFailed: false,
 											}
 										: b,
 								),
@@ -1629,11 +1669,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 						});
 					});
 				}
+
+				if (destFolderName) {
+					addToast(
+						`AI Auto-Organized: "${title}" moved to "${destFolderName}"`,
+						"success",
+					);
+				} else {
+					addToast(`AI processed: "${title}" (no category matched)`, "warning");
+				}
 			} catch (err) {
+				const errMsg = err instanceof Error ? err.message : String(err);
 				console.error("AI Auto-Organize failed for bookmark:", id, err);
+
+				if (isExtension) {
+					getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
+						const meta = (currentMeta as Record<string, unknown>) || {};
+						meta[id] = {
+							...(meta[id] as object),
+							aiFailed: true,
+						};
+						setStorageItem("bm_metadata_bookmarks", meta).then(() => {
+							loadData();
+						});
+					});
+				} else {
+					getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
+						const meta = (currentMeta as Record<string, unknown>) || {};
+						meta[id] = {
+							...(meta[id] as object),
+							aiFailed: true,
+						};
+						setStorageItem("bm_metadata_bookmarks", meta).then(() => {
+							setBookmarks((prev) =>
+								prev.map((b) => (b.id === id ? { ...b, aiFailed: true } : b)),
+							);
+						});
+					});
+				}
+
+				addToast(`AI Auto-Organize failed for "${title}": ${errMsg}`, "error");
 			}
 		},
-		[settings, folders, aiFolders, addFolder, loadData],
+		[settings, folders, aiFolders, addFolder, loadData, addToast],
 	);
 
 	// Sync event listeners for external Chrome Bookmark updates
@@ -1641,23 +1719,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 		loadData();
 
 		if (isExtension) {
-			const handleCreated = (
-				id: string,
-				node: chrome.bookmarks.BookmarkTreeNode,
-			) => {
-				if (!isReconcilingRef.current) {
-					loadData().then(() => {
-						if (node.url) {
-							triggerAutoOrganize(
-								id,
-								node.title,
-								node.url,
-								node.parentId || null,
-							);
-						}
-					});
-				}
-			};
 			const handleRemoved = () => {
 				if (!isReconcilingRef.current) loadData();
 			};
@@ -1667,20 +1728,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 			const handleMoved = () => {
 				if (!isReconcilingRef.current) loadData();
 			};
+			const handleStorageChanged = (
+				changes: Record<string, chrome.storage.StorageChange>,
+				areaName: string,
+			) => {
+				if (
+					areaName === "local" &&
+					(changes.bm_metadata_bookmarks ||
+						changes.bm_metadata_folders ||
+						changes.bm_settings ||
+						changes.bm_blueprint_folders)
+				) {
+					loadData();
+				}
+			};
 
-			chrome.bookmarks.onCreated.addListener(handleCreated);
 			chrome.bookmarks.onRemoved.addListener(handleRemoved);
 			chrome.bookmarks.onChanged.addListener(handleChanged);
 			chrome.bookmarks.onMoved.addListener(handleMoved);
+			chrome.storage.onChanged.addListener(handleStorageChanged);
 
 			return () => {
-				chrome.bookmarks.onCreated.removeListener(handleCreated);
 				chrome.bookmarks.onRemoved.removeListener(handleRemoved);
 				chrome.bookmarks.onChanged.removeListener(handleChanged);
 				chrome.bookmarks.onMoved.removeListener(handleMoved);
+				chrome.storage.onChanged.removeListener(handleStorageChanged);
 			};
 		}
-	}, [loadData, triggerAutoOrganize]);
+	}, [loadData]);
 
 	const clearHealthScanHistory = useCallback(() => {
 		setHealthScanHistory([]);
@@ -1723,6 +1798,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 				clearHealthScanHistory,
 				lastScanResults,
 				setLastScanResults,
+				triggerAutoOrganize,
+				toasts,
+				addToast,
+				removeToast,
 			}}
 		>
 			{children}

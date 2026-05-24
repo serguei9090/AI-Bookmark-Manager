@@ -29,7 +29,10 @@ try {
 			48: "icons/icon-48.png",
 			128: "icons/icon-128.png",
 		},
-		permissions: ["storage", "bookmarks"],
+		background: {
+			service_worker: "background.js",
+		},
+		permissions: ["storage", "bookmarks", "notifications"],
 		host_permissions: [
 			"https://generativelanguage.googleapis.com/*",
 			"https://api.openai.com/*",

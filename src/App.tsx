@@ -6,6 +6,7 @@ import { OrganizeView } from "./components/OrganizeView";
 import { SettingsView } from "./components/SettingsView";
 import { Sidebar } from "./components/Sidebar";
 import { SimplePopupView } from "./components/SimplePopupView";
+import { ToastContainer } from "./components/ToastContainer";
 import { ToolsView } from "./components/ToolsView";
 import { AppProvider } from "./store";
 
@@ -32,14 +33,15 @@ function AppLayout() {
 
 	if (isActualExtensionPopup) {
 		return (
-			<div className="w-[430px] h-[600px] bg-white dark:bg-gray-900 flex flex-col overflow-hidden p-4">
+			<div className="w-[430px] h-[600px] bg-white dark:bg-gray-900 flex flex-col overflow-hidden p-4 relative">
 				<SimplePopupView />
+				<ToastContainer />
 			</div>
 		);
 	}
 
 	return (
-		<div className="min-h-screen bg-gray-100 dark:bg-gray-950 flex flex-col transition-all duration-300">
+		<div className="min-h-screen bg-gray-100 dark:bg-gray-955 flex flex-col transition-all duration-300 relative">
 			{/* CORE WORKSPACE PANEL */}
 			<div className="flex-1 flex overflow-hidden">
 				<Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -52,6 +54,7 @@ function AppLayout() {
 					{activeTab === "settings" && <SettingsView />}
 				</main>
 			</div>
+			<ToastContainer />
 		</div>
 	);
 }

@@ -7,53 +7,13 @@ import {
 	Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { fetchModels, testConnection } from "../services/aiService";
 import { useAppContext } from "../store";
 import type { AIProvider, Settings } from "../types";
 
-/** Resolve the active base URL for a given provider from settings */
-const resolveBaseUrl = (settings: Settings): string => {
-	switch (settings.provider) {
-		case "gemini":
-			return (
-				settings.geminiUrl || "https://generativelanguage.googleapis.com"
-			).replace(/\/$/, "");
-		case "openai":
-			return (settings.openaiUrl || "https://api.openai.com").replace(
-				/\/$/,
-				"",
-			);
-		case "ollama":
-			return (settings.ollamaUrl || "http://localhost:11434").replace(
-				/\/$/,
-				"",
-			);
-		case "lmstudio":
-			return (settings.lmstudioUrl || "http://localhost:1234").replace(
-				/\/$/,
-				"",
-			);
-		default:
-			return (settings.customUrl || "http://localhost:8080").replace(/\/$/, "");
-	}
-};
-
-const resolveApiKey = (settings: Settings): string => {
-	switch (settings.provider) {
-		case "gemini":
-			return settings.geminiApiKey || "";
-		case "openai":
-			return settings.openaiApiKey || "";
-		case "ollama":
-			return settings.ollamaApiKey || "";
-		case "lmstudio":
-			return settings.lmstudioApiKey || "";
-		default:
-			return settings.customApiKey || "";
-	}
-};
-
 export function SettingsView() {
-	const { settings, setSettings, folders } = useAppContext();
+	const { settings, setSettings, folders, bookmarks, triggerAutoOrganize } =
+		useAppContext();
 	const [localSaving, setLocalSaving] = useState(false);
 	const [isFetching, setIsFetching] = useState(false);
 	const [fetchedModels, setFetchedModels] = useState<string[]>([]);
@@ -93,38 +53,7 @@ export function SettingsView() {
 		setIsTesting(true);
 		setTestStatus(null);
 		try {
-			const base = resolveBaseUrl(settings);
-			const apiKey = resolveApiKey(settings);
-			let testUrl = "";
-			const headers: Record<string, string> = {};
-
-			if (settings.provider === "gemini") {
-				const isFullUrl = base.includes("/v1");
-				testUrl = isFullUrl
-					? `${base}/models?key=${apiKey}`
-					: `${base}/v1beta/models?key=${apiKey}`;
-			} else if (settings.provider === "openai") {
-				testUrl = `${base}/models`;
-				if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-			} else if (settings.provider === "ollama") {
-				testUrl = `${base}/api/tags`;
-			} else {
-				testUrl = base.includes("/v1") ? `${base}/models` : `${base}/v1/models`;
-				if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-			}
-
-			const res = await fetch(testUrl, { headers });
-			if (!res.ok) throw new Error(`API returned HTTP ${res.status}`);
-			const data = await res.json();
-
-			if (settings.provider === "ollama") {
-				if (!data.models) throw new Error("Invalid response format");
-			} else if (settings.provider === "gemini") {
-				if (!data.models) throw new Error("Invalid response format");
-			} else {
-				if (!data.data) throw new Error("Invalid response format");
-			}
-
+			await testConnection(settings);
 			setTestStatus({
 				type: "success",
 				message: "Connection successful!",
@@ -144,79 +73,13 @@ export function SettingsView() {
 	const handleFetchModels = async () => {
 		setIsFetching(true);
 		setFetchError(null);
-		const base = resolveBaseUrl(settings);
-		const apiKey = resolveApiKey(settings);
-
 		try {
-			let models: string[] = [];
-
-			if (settings.provider === "gemini") {
-				// Gemini: GET /v1beta/models?key=...
-				const isFullUrl = base.includes("/v1");
-				const listUrl = isFullUrl
-					? `${base}/models?key=${apiKey}`
-					: `${base}/v1beta/models?key=${apiKey}`;
-				const res = await fetch(listUrl);
-				if (!res.ok) throw new Error(`Gemini API returned ${res.status}`);
-				const data = await res.json();
-
-				const metaMap: Record<string, { outputTokenLimit?: number }> = {};
-				const modelsList = (data.models || [])
-					// Only include models that support generateContent
-					.filter((m: { supportedGenerationMethods?: string[] }) =>
-						(m.supportedGenerationMethods || []).includes("generateContent"),
-					);
-
-				modelsList.forEach(
-					(m: { name?: string; outputTokenLimit?: number }) => {
-						const name = (m.name || "").replace(/^models\//, "");
-						if (name) {
-							metaMap[name] = { outputTokenLimit: m.outputTokenLimit };
-						}
-					},
-				);
-
-				setModelMeta(metaMap);
-				models = Object.keys(metaMap).sort();
-			} else if (settings.provider === "openai") {
-				// OpenAI: GET /v1/models  with Bearer auth
-				const res = await fetch(`${base}/v1/models`, {
-					headers: { Authorization: `Bearer ${apiKey}` },
-				});
-				if (!res.ok) throw new Error(`OpenAI API returned ${res.status}`);
-				const data = await res.json();
-				models = (data.data || [])
-					.map((m: { id?: string }) => m.id)
-					.filter(Boolean)
-					.sort();
-			} else if (settings.provider === "ollama") {
-				// Ollama: GET /api/tags  (no auth)
-				const res = await fetch(`${base}/api/tags`);
-				if (!res.ok) throw new Error(`Ollama returned ${res.status}`);
-				const data = await res.json();
-				models = (data.models || [])
-					.map((m: { name?: string }) => m.name)
-					.filter(Boolean)
-					.sort();
-			} else {
-				// LMStudio / Custom: OpenAI-compatible GET /v1/models
-				const url = base.includes("/v1")
-					? `${base}/models`
-					: `${base}/v1/models`;
-				const headers: Record<string, string> = {};
-				if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-				const res = await fetch(url, { headers });
-				if (!res.ok) throw new Error(`Endpoint returned ${res.status}`);
-				const data = await res.json();
-				models = (data.data || [])
-					.map((m: { id?: string }) => m.id)
-					.filter(Boolean)
-					.sort();
-			}
-
+			const { models, metaMap } = await fetchModels(settings);
 			if (models.length === 0)
 				throw new Error("No models returned by endpoint");
+			setModelMeta(metaMap);
 			setFetchedModels(models);
+
 			// Auto-select first model if current selection not in new list
 			if (!models.includes(settings.model)) {
 				const nextModel = models[0] || "";
@@ -750,6 +613,72 @@ export function SettingsView() {
 								created and monitored.
 							</p>
 						</div>
+
+						{/* Failed Bookmarks retry block */}
+						{(() => {
+							const effectiveFolderId = (() => {
+								if (settings.monitoredFolderId)
+									return settings.monitoredFolderId;
+								const toSort = folders.find(
+									(f) => f.name.toLowerCase() === "tosort",
+								);
+								return toSort ? toSort.id : "";
+							})();
+							const failedBookmarks = bookmarks.filter(
+								(b) =>
+									b.aiFailed ||
+									(effectiveFolderId !== "" &&
+										b.folderId === effectiveFolderId &&
+										!b.summary),
+							);
+
+							if (failedBookmarks.length === 0) return null;
+
+							return (
+								<div className="pt-4 border-t border-gray-100 dark:border-gray-750 space-y-3">
+									<h4 className="text-sm font-bold text-red-500 flex items-center gap-1.5">
+										<AlertCircle size={15} />
+										Unorganized / Failed Bookmarks ({failedBookmarks.length})
+									</h4>
+									<p className="text-xs text-gray-500 dark:text-gray-450">
+										The following bookmarks are in the monitored folder but
+										failed to be automatically organized by AI. You can retry
+										processing them.
+									</p>
+									<div className="max-h-60 overflow-y-auto border border-gray-100 dark:border-gray-750 rounded-xl divide-y divide-gray-100 dark:divide-gray-750 bg-gray-50/50 dark:bg-gray-900/30">
+										{failedBookmarks.map((bm) => (
+											<div
+												key={bm.id}
+												className="flex items-center justify-between gap-4 p-3 hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+											>
+												<div className="min-w-0 flex-1">
+													<span className="font-semibold text-xs text-gray-805 dark:text-gray-250 block truncate">
+														{bm.title}
+													</span>
+													<span className="text-[10px] text-gray-405 dark:text-gray-500 block truncate">
+														{bm.url}
+													</span>
+												</div>
+												<button
+													type="button"
+													onClick={() =>
+														triggerAutoOrganize(
+															bm.id,
+															bm.title,
+															bm.url,
+															bm.folderId,
+														)
+													}
+													className="px-3 py-1.5 text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 dark:text-blue-400 rounded-lg border border-blue-200 dark:border-blue-900/30 transition-all cursor-pointer flex items-center gap-1 active:scale-95 shadow-sm shrink-0"
+												>
+													Retry Organizing
+												</button>
+											</div>
+										))}
+									</div>
+								</div>
+							);
+						})()}
 					</div>
 				)}
 			</div>

@@ -9,6 +9,7 @@ export type Bookmark = {
 	favicon?: string;
 	manuallyAssigned?: boolean;
 	ignoredDead?: boolean;
+	aiFailed?: boolean;
 };
 
 export type Folder = {
@@ -77,4 +78,12 @@ export type LastScanResultsState = {
 	scanState: "idle" | "scanning" | "complete";
 	scannedCount: number;
 	totalToScan: number;
+};
+
+export type ToastType = "success" | "error" | "info" | "warning";
+
+export type Toast = {
+	id: string;
+	message: string;
+	type: ToastType;
 };

@@ -1,4 +1,5 @@
 import {
+	AlertCircle,
 	ArrowLeft,
 	Check,
 	ExternalLink,
@@ -12,17 +13,21 @@ import {
 	Sun,
 } from "lucide-react";
 import React, { useMemo, useState } from "react";
+import { fetchModels, testConnection } from "../services/aiService";
 import { useAppContext } from "../store";
-import type { AIProvider } from "../types";
+import type { AIProvider, Settings as SettingsType } from "../types";
 
 export function SimplePopupView() {
-	const { bookmarks, folders, settings, setSettings } = useAppContext();
+	const { bookmarks, folders, settings, setSettings, triggerAutoOrganize } =
+		useAppContext();
 	const [searchQuery, setSearchQuery] = useState("");
 	const [showSettings, setShowSettings] = useState(false);
 	const [localProvider, setLocalProvider] = useState<AIProvider>("gemini");
 	const [localUrl, setLocalUrl] = useState("");
 	const [localApiKey, setLocalApiKey] = useState("");
 	const [localModel, setLocalModel] = useState("");
+	const [localAutoOrganize, setLocalAutoOrganize] = useState(false);
+	const [localMonitoredFolderId, setLocalMonitoredFolderId] = useState("");
 	const [saveSuccess, setSaveSuccess] = useState(false);
 	const [isTesting, setIsTesting] = useState(false);
 	const [testStatus, setTestStatus] = useState<{
@@ -39,11 +44,12 @@ export function SimplePopupView() {
 	>({});
 	const [isCustom, setIsCustom] = useState(false);
 
-	// Sync state with settings when showSettings becomes true
 	React.useEffect(() => {
 		if (showSettings) {
 			setLocalProvider(settings.provider);
 			setLocalModel(settings.model || "");
+			setLocalAutoOrganize(settings.autoOrganizeEnabled || false);
+			setLocalMonitoredFolderId(settings.monitoredFolderId || "");
 			setTestStatus(null);
 			setFetchError(null);
 			setFetchedModels([]);
@@ -76,80 +82,39 @@ export function SimplePopupView() {
 		}
 	}, [fetchedModels, localModel]);
 
+	const getTempSettings = (): SettingsType => {
+		return {
+			...settings,
+			provider: localProvider,
+			geminiUrl: localProvider === "gemini" ? localUrl : settings.geminiUrl,
+			geminiApiKey:
+				localProvider === "gemini" ? localApiKey : settings.geminiApiKey,
+			openaiUrl: localProvider === "openai" ? localUrl : settings.openaiUrl,
+			openaiApiKey:
+				localProvider === "openai" ? localApiKey : settings.openaiApiKey,
+			ollamaUrl: localProvider === "ollama" ? localUrl : settings.ollamaUrl,
+			ollamaApiKey:
+				localProvider === "ollama" ? localApiKey : settings.ollamaApiKey,
+			lmstudioUrl:
+				localProvider === "lmstudio" ? localUrl : settings.lmstudioUrl,
+			lmstudioApiKey:
+				localProvider === "lmstudio" ? localApiKey : settings.lmstudioApiKey,
+			customUrl: localProvider === "custom" ? localUrl : settings.customUrl,
+			customApiKey:
+				localProvider === "custom" ? localApiKey : settings.customApiKey,
+		};
+	};
+
 	const handleFetchModels = async () => {
 		setIsFetching(true);
 		setFetchError(null);
-		const base = localUrl.trim().replace(/\/$/, "");
-		const apiKey = localApiKey.trim();
-
 		try {
-			let models: string[] = [];
-
-			if (localProvider === "gemini") {
-				const isFullUrl = base.includes("/v1");
-				const listUrl = isFullUrl
-					? `${base}/models?key=${apiKey}`
-					: `${base}/v1beta/models?key=${apiKey}`;
-				const res = await fetch(listUrl);
-				if (!res.ok) throw new Error(`Gemini API returned ${res.status}`);
-				const data = await res.json();
-
-				const metaMap: Record<string, { outputTokenLimit?: number }> = {};
-				const modelsList = (data.models || []).filter(
-					(m: { supportedGenerationMethods?: string[] }) =>
-						(m.supportedGenerationMethods || []).includes("generateContent"),
-				);
-
-				modelsList.forEach(
-					(m: { name?: string; outputTokenLimit?: number }) => {
-						const name = (m.name || "").replace(/^models\//, "");
-						if (name) {
-							metaMap[name] = { outputTokenLimit: m.outputTokenLimit };
-						}
-					},
-				);
-
-				setModelMeta(metaMap);
-				models = Object.keys(metaMap).sort();
-			} else if (localProvider === "openai") {
-				const url = base.endsWith("/v1")
-					? `${base}/models`
-					: `${base}/v1/models`;
-				const res = await fetch(url, {
-					headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
-				});
-				if (!res.ok) throw new Error(`OpenAI API returned ${res.status}`);
-				const data = await res.json();
-				models = (data.data || [])
-					.map((m: { id?: string }) => m.id)
-					.filter(Boolean)
-					.sort();
-			} else if (localProvider === "ollama") {
-				const res = await fetch(`${base}/api/tags`);
-				if (!res.ok) throw new Error(`Ollama returned ${res.status}`);
-				const data = await res.json();
-				models = (data.models || [])
-					.map((m: { name?: string }) => m.name)
-					.filter(Boolean)
-					.sort();
-			} else {
-				const url = base.includes("/v1")
-					? `${base}/models`
-					: `${base}/v1/models`;
-				const headers: Record<string, string> = {};
-				if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-				const res = await fetch(url, { headers });
-				if (!res.ok) throw new Error(`Endpoint returned ${res.status}`);
-				const data = await res.json();
-				models = (data.data || [])
-					.map((m: { id?: string }) => m.id)
-					.filter(Boolean)
-					.sort();
-			}
-
+			const tempSettings = getTempSettings();
+			const { models, metaMap } = await fetchModels(tempSettings);
 			if (models.length === 0)
 				throw new Error("No models returned by endpoint");
 			setFetchedModels(models);
+			setModelMeta(metaMap);
 			if (!models.includes(localModel)) {
 				const nextModel = models[0] || "";
 				setLocalModel(nextModel);
@@ -194,6 +159,35 @@ export function SimplePopupView() {
 		}
 	};
 
+	const failedBookmarks = useMemo(() => {
+		const targetFolderId = showSettings
+			? localMonitoredFolderId
+			: settings.monitoredFolderId || "";
+		const effectiveFolderId = (() => {
+			if (targetFolderId) return targetFolderId;
+			const toSort = folders.find((f) => f.name.toLowerCase() === "tosort");
+			return toSort ? toSort.id : "";
+		})();
+		const enabled = showSettings
+			? localAutoOrganize
+			: settings.autoOrganizeEnabled || false;
+		if (!enabled) return [];
+		return bookmarks.filter(
+			(b) =>
+				b.aiFailed ||
+				(effectiveFolderId !== "" &&
+					b.folderId === effectiveFolderId &&
+					!b.summary),
+		);
+	}, [
+		bookmarks,
+		folders,
+		settings,
+		showSettings,
+		localAutoOrganize,
+		localMonitoredFolderId,
+	]);
+
 	// Filter bookmarks by search query
 	const filteredBookmarks = useMemo(() => {
 		if (!searchQuery.trim()) {
@@ -211,6 +205,17 @@ export function SimplePopupView() {
 		);
 	}, [bookmarks, searchQuery]);
 
+	const actualFailedCount = useMemo(() => {
+		return bookmarks.filter((b) => b.aiFailed).length;
+	}, [bookmarks]);
+
+	const handleRetryAllFailed = async () => {
+		const toRetry = bookmarks.filter((b) => b.aiFailed);
+		for (const bm of toRetry) {
+			await triggerAutoOrganize(bm.id, bm.title, bm.url, bm.folderId, true);
+		}
+	};
+
 	const handleOpenBookmark = (url: string) => {
 		window.open(url, "_blank");
 	};
@@ -227,38 +232,8 @@ export function SimplePopupView() {
 		setIsTesting(true);
 		setTestStatus(null);
 		try {
-			const base = localUrl.trim().replace(/\/$/, "");
-			const apiKey = localApiKey.trim();
-			let testUrl = "";
-			const headers: Record<string, string> = {};
-
-			if (localProvider === "gemini") {
-				const isFullUrl = base.includes("/v1");
-				testUrl = isFullUrl
-					? `${base}/models?key=${apiKey}`
-					: `${base}/v1beta/models?key=${apiKey}`;
-			} else if (localProvider === "openai") {
-				testUrl = `${base}/models`;
-				if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-			} else if (localProvider === "ollama") {
-				testUrl = `${base}/api/tags`;
-			} else {
-				testUrl = base.includes("/v1") ? `${base}/models` : `${base}/v1/models`;
-				if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-			}
-
-			const res = await fetch(testUrl, { headers });
-			if (!res.ok) throw new Error(`API returned HTTP ${res.status}`);
-			const data = await res.json();
-
-			if (localProvider === "ollama") {
-				if (!data.models) throw new Error("Invalid response format");
-			} else if (localProvider === "gemini") {
-				if (!data.models) throw new Error("Invalid response format");
-			} else {
-				if (!data.data) throw new Error("Invalid response format");
-			}
-
+			const tempSettings = getTempSettings();
+			await testConnection(tempSettings);
 			setTestStatus({
 				type: "success",
 				message: "Connection successful!",
@@ -282,6 +257,8 @@ export function SimplePopupView() {
 				...prev,
 				provider: localProvider,
 				model: localModel,
+				autoOrganizeEnabled: localAutoOrganize,
+				monitoredFolderId: localMonitoredFolderId,
 			};
 			if (localProvider === "gemini") {
 				updated.geminiUrl = localUrl;
@@ -609,6 +586,99 @@ export function SimplePopupView() {
 									/>
 								</div>
 							)}
+
+							{/* AI AUTO-ORGANIZE CONFIG */}
+							<div className="pt-2.5 border-t border-gray-200 dark:border-gray-800 space-y-2.5">
+								<div className="flex items-center justify-between">
+									<label
+										htmlFor="popup-auto-organize-toggle"
+										className="block text-[10px] font-bold text-gray-400 dark:text-gray-505 uppercase tracking-wider"
+									>
+										AI Auto-Organize
+									</label>
+									<button
+										type="button"
+										id="popup-auto-organize-toggle"
+										onClick={() => setLocalAutoOrganize(!localAutoOrganize)}
+										className={`w-10 h-5 rounded-full transition-colors flex items-center ${
+											localAutoOrganize ? "bg-blue-600" : "bg-gray-300"
+										} px-0.5`}
+									>
+										<div
+											className={`w-4 h-4 rounded-full bg-white transition-transform ${
+												localAutoOrganize ? "translate-x-5" : "translate-x-0"
+											}`}
+										/>
+									</button>
+								</div>
+								<p className="text-[9px] text-gray-400 dark:text-gray-500 leading-normal">
+									Automatically summarize, tag, and sort new bookmarks.
+								</p>
+
+								{localAutoOrganize && (
+									<div className="space-y-1 mt-1.5">
+										<label
+											htmlFor="popup-monitored-folder"
+											className="block text-[9px] font-bold text-gray-400 dark:text-gray-505 uppercase tracking-wider"
+										>
+											Monitored Folder
+										</label>
+										<select
+											id="popup-monitored-folder"
+											value={localMonitoredFolderId}
+											onChange={(e) =>
+												setLocalMonitoredFolderId(e.target.value)
+											}
+											className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl px-3 py-1.5 text-xs dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+										>
+											<option value="">
+												— Auto-create ToSort folder (Default) —
+											</option>
+											{folders.map((f) => (
+												<option key={f.id} value={f.id}>
+													{f.name}
+												</option>
+											))}
+										</select>
+									</div>
+								)}
+
+								{/* Failed retry panel in popup settings */}
+								{localAutoOrganize && failedBookmarks.length > 0 && (
+									<div className="pt-2 border-t border-gray-200 dark:border-gray-800 space-y-1.5">
+										<span className="block text-[9px] font-bold text-red-500 uppercase tracking-wider">
+											Failed Bookmarks ({failedBookmarks.length})
+										</span>
+										<div className="max-h-24 overflow-y-auto space-y-1 pr-1 border border-gray-100 dark:border-gray-800 rounded-xl p-1 bg-gray-50/30 dark:bg-gray-900/10">
+											{failedBookmarks.map((bm) => (
+												<div
+													key={bm.id}
+													className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-red-50/40 dark:bg-red-950/10 border border-red-100 dark:border-red-900/20"
+												>
+													<span className="text-[10px] text-gray-700 dark:text-gray-200 truncate flex-1 font-medium">
+														{bm.title}
+													</span>
+													<button
+														type="button"
+														onClick={() =>
+															triggerAutoOrganize(
+																bm.id,
+																bm.title,
+																bm.url,
+																bm.folderId,
+																true,
+															)
+														}
+														className="text-[9px] font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-900/30 px-1.5 py-0.5 rounded cursor-pointer transition-all active:scale-95 shrink-0"
+													>
+														Retry
+													</button>
+												</div>
+											))}
+										</div>
+									</div>
+								)}
+							</div>
 						</div>
 
 						<div className="flex flex-col gap-2 pt-2">
@@ -639,6 +709,37 @@ export function SimplePopupView() {
 				) : (
 					/* BOOKMARKS SEARCH & LIST VIEW */
 					<div className="space-y-2.5 animate-fade-in">
+						{/* Failed Bookmarks Warning Banner */}
+						{actualFailedCount > 0 && (
+							<div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-150 dark:border-red-900/30 text-xs text-red-800 dark:text-red-300 animate-fade-in">
+								<div className="flex items-center gap-2 min-w-0">
+									<AlertCircle
+										size={16}
+										className="text-red-500 shrink-0 animate-pulse"
+									/>
+									<span className="font-semibold truncate">
+										AI Auto-Organize failed ({actualFailedCount})
+									</span>
+								</div>
+								<div className="flex items-center gap-1.5 shrink-0">
+									<button
+										type="button"
+										onClick={handleRetryAllFailed}
+										className="text-[10px] font-bold bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+									>
+										Retry All
+									</button>
+									<button
+										type="button"
+										onClick={() => setShowSettings(true)}
+										className="text-[10px] font-bold bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-350 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+									>
+										View
+									</button>
+								</div>
+							</div>
+						)}
+
 						{/* SEARCH INPUT */}
 						<div className="relative mb-3.5">
 							<Search
@@ -671,54 +772,108 @@ export function SimplePopupView() {
 								</div>
 							) : (
 								filteredBookmarks.map((bm) => (
-									<button
-										type="button"
+									<div
 										key={bm.id}
-										onClick={() => handleOpenBookmark(bm.url)}
-										className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl hover:bg-blue-50/50 dark:hover:bg-blue-900/10 border border-transparent hover:border-blue-100 dark:hover:border-blue-900/30 transition-all cursor-pointer group bg-transparent"
+										className="w-full flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-blue-50/50 dark:hover:bg-blue-900/10 border border-transparent hover:border-blue-100 dark:hover:border-blue-900/30 transition-all group bg-transparent"
 									>
-										{/* Favicon */}
-										<div className="w-8 h-8 rounded-lg bg-gray-50 dark:bg-gray-800 p-1.5 border border-gray-200 dark:border-gray-800 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
-											{getFaviconUrl(bm.url) ? (
-												<img
-													src={getFaviconUrl(bm.url)}
-													alt=""
-													onError={(e) => {
-														(e.target as HTMLImageElement).style.display =
-															"none";
-													}}
-													className="w-5 h-5 object-contain"
-													referrerPolicy="no-referrer"
-												/>
-											) : (
-												<Globe size={14} className="text-gray-400" />
+										{/* Main clickable area: opens link */}
+										<button
+											type="button"
+											onClick={() => handleOpenBookmark(bm.url)}
+											className="flex-1 text-left flex items-center gap-3 min-w-0 cursor-pointer border-0 bg-transparent p-0 outline-none"
+										>
+											{/* Favicon */}
+											<div className="w-8 h-8 rounded-lg bg-gray-50 dark:bg-gray-800 p-1.5 border border-gray-200 dark:border-gray-800 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+												{getFaviconUrl(bm.url) ? (
+													<img
+														src={getFaviconUrl(bm.url)}
+														alt=""
+														onError={(e) => {
+															(e.target as HTMLImageElement).style.display =
+																"none";
+														}}
+														className="w-5 h-5 object-contain"
+														referrerPolicy="no-referrer"
+													/>
+												) : (
+													<Globe size={14} className="text-gray-400" />
+												)}
+											</div>
+
+											{/* Bookmark details */}
+											<div className="flex-1 min-w-0">
+												<div className="flex items-center gap-1.5">
+													<span className="font-semibold text-xs text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate block">
+														{bm.title}
+													</span>
+													<ExternalLink
+														size={10}
+														className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity"
+													/>
+												</div>
+												<span className="text-[10px] text-gray-500 dark:text-gray-450 truncate block mt-0.5">
+													{parseDomainName(bm.url)}
+												</span>
+											</div>
+										</button>
+
+										{/* Sibling controls */}
+										<div className="flex items-center gap-2 shrink-0">
+											{(() => {
+												const effectiveFolderId =
+													settings.monitoredFolderId ||
+													folders.find((f) => f.name.toLowerCase() === "tosort")
+														?.id ||
+													"";
+												const isFailedOrUnorganized =
+													bm.aiFailed ||
+													(settings.autoOrganizeEnabled &&
+														effectiveFolderId !== "" &&
+														bm.folderId === effectiveFolderId &&
+														!bm.summary);
+												if (!isFailedOrUnorganized) return null;
+												return (
+													<div className="flex items-center gap-1.5 shrink-0 ml-1.5">
+														<AlertCircle
+															size={12}
+															className="text-red-500 shrink-0"
+															title="AI Auto-Organize Failed"
+														/>
+														<button
+															type="button"
+															className="text-[9px] font-bold bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-900/30 px-1.5 py-0.5 rounded cursor-pointer transition-all active:scale-95 shrink-0 flex items-center gap-0.5"
+															title="Click to retry AI auto-organization"
+															onClick={(e) => {
+																e.preventDefault();
+																e.stopPropagation();
+																triggerAutoOrganize(
+																	bm.id,
+																	bm.title,
+																	bm.url,
+																	bm.folderId,
+																	true,
+																);
+															}}
+														>
+															<RefreshCw
+																size={8}
+																className="animate-spin-hover"
+															/>
+															<span>Retry</span>
+														</button>
+													</div>
+												);
+											})()}
+
+											{/* Optional folder indication */}
+											{bm.folderId && (
+												<span className="text-[9px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded-md flex items-center gap-1 shrink-0">
+													<Folder size={8} />
+													{folders.find((f) => f.id === bm.folderId)?.name}
+												</span>
 											)}
 										</div>
-
-										{/* Bookmark details */}
-										<div className="flex-1 min-w-0">
-											<div className="flex items-center gap-1.5">
-												<span className="font-semibold text-xs text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate block">
-													{bm.title}
-												</span>
-												<ExternalLink
-													size={10}
-													className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity"
-												/>
-											</div>
-											<span className="text-[10px] text-gray-500 dark:text-gray-450 truncate block mt-0.5">
-												{parseDomainName(bm.url)}
-											</span>
-										</div>
-
-										{/* Optional folder indication */}
-										{bm.folderId && (
-											<span className="text-[9px] font-bold bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-												<Folder size={8} />
-												{folders.find((f) => f.id === bm.folderId)?.name}
-											</span>
-										)}
-									</button>
+									</div>
 								))
 							)}
 						</div>
