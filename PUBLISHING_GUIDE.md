@@ -1,4 +1,4 @@
-# AI Bookmark Manager - Publishing & Distribution Guide (v0.4.1)
+# AI Bookmark Manager - Publishing & Distribution Guide (v0.4.2)
 
 This guide provides the complete set of steps and required information for open-sourcing the project on GitHub under the MIT License and publishing the extension to the Google Chrome Web Store.
 
@@ -8,10 +8,10 @@ This guide provides the complete set of steps and required information for open-
 
 ### 1. Verification of MIT License Files
 
-The project has been prepared with version `0.4.1` and configured with:
+The project has been prepared with version `0.4.2` and configured with:
 
 - **`LICENSE`**: A standard MIT License has been generated in the root directory.
-- **`package.json`**: Configured with `"version": "0.4.1"` and `"license": "MIT"`.
+- **`package.json`**: Configured with `"version": "0.4.2"` and `"license": "MIT"`.
 - **`README.md`**: Updated to state the MIT open-source license.
 
 ### 2. Standard Git & GitHub Setup Checklist
@@ -25,7 +25,7 @@ The project has been prepared with version `0.4.1` and configured with:
     ```bash
     git init
     git add .
-    git commit -m "chore: release v0.4.1 with MIT License and publishing preparation"
+    git commit -m "chore: release v0.4.2 with MIT License and publishing preparation"
     ```
 3.  **Create a Repository on GitHub**:
     - Go to [github.com/new](https://github.com/new).
@@ -41,7 +41,7 @@ The project has been prepared with version `0.4.1` and configured with:
     ```
 5.  **Enable GitHub Features (Recommended for MIT projects)**:
     - **Repository Topics**: Add tags like `chrome-extension`, `react`, `tailwind`, `gemini-api`, `ai-bookmark-manager`, `mit-license` to improve search discoverability.
-    - **Releases**: Create a new release tagged `v0.4.1` and upload a brief release changelog outlining the version details.
+    - **Releases**: Create a new release tagged `v0.4.2` and upload a brief release changelog outlining the version details.
 
 ---
 
@@ -64,7 +64,7 @@ The output will be placed in the **`dist/`** directory.
 ### 2. Packaging the Extension
 
 1.  Locate the compiled **`dist/`** folder (which contains your static assets and the generated `manifest.json`).
-2.  Compress the **contents** of the `dist/` folder into a single `.zip` file (e.g., `ai-bookmark-manager-v0.4.1.zip`).
+2.  Compress the **contents** of the `dist/` folder into a single `.zip` file (e.g., `ai-bookmark-manager-v0.4.2.zip`).
     - _Warning:_ Zip the _contents_ of `dist/` directly, not the `dist` folder itself. When opened, the root of the ZIP file must contain the `manifest.json`.
 
 ### 3. Upload and Store Listing Details

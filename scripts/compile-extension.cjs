@@ -18,7 +18,7 @@ try {
 	const manifest = {
 		manifest_version: 3,
 		name: "AI Bookmark Manager",
-		version: "0.4.1",
+		version: "0.4.2",
 		description:
 			"An AI-powered bookmark manager with categorization, summary generation, dark mode, and duplicate detection.",
 		action: {
@@ -33,6 +33,8 @@ try {
 		host_permissions: [
 			"https://generativelanguage.googleapis.com/*",
 			"https://api.openai.com/*",
+			"http://*/*",
+			"https://*/*",
 		],
 	};
 

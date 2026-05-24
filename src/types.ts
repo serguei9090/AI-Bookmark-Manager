@@ -8,6 +8,7 @@ export type Bookmark = {
 	dateAdded: number;
 	favicon?: string;
 	manuallyAssigned?: boolean;
+	ignoredDead?: boolean;
 };
 
 export type Folder = {

@@ -295,6 +295,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 									summary: meta.summary || "",
 									dateAdded: node.dateAdded || Date.now(),
 									manuallyAssigned: meta.manuallyAssigned || false,
+									ignoredDead: meta.ignoredDead || false,
 								});
 							}
 						}
@@ -349,6 +350,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 					summary: meta.summary || bm.summary || "",
 					manuallyAssigned:
 						meta.manuallyAssigned || bm.manuallyAssigned || false,
+					ignoredDead: meta.ignoredDead || bm.ignoredDead || false,
 				};
 			});
 
@@ -491,6 +493,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 							tags: bookmark.tags || [],
 							summary: bookmark.summary || "",
 							manuallyAssigned: bookmark.manuallyAssigned || false,
+							ignoredDead: bookmark.ignoredDead || false,
 						};
 						setStorageItem("bm_metadata_bookmarks", meta).then(async () => {
 							await loadData();
@@ -515,6 +518,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 					tags: newBookmark.tags || [],
 					summary: newBookmark.summary || "",
 					manuallyAssigned: newBookmark.manuallyAssigned || false,
+					ignoredDead: newBookmark.ignoredDead || false,
 				};
 				setStorageItem("bm_metadata_bookmarks", meta).then(() => {
 					pushHistory(
@@ -560,7 +564,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 			if (
 				updates.tags !== undefined ||
 				updates.summary !== undefined ||
-				updates.manuallyAssigned !== undefined
+				updates.manuallyAssigned !== undefined ||
+				updates.ignoredDead !== undefined
 			) {
 				const metadataPromise = getStorageItem("bm_metadata_bookmarks").then(
 					(currentMeta) => {
@@ -578,6 +583,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 								updates.manuallyAssigned !== undefined
 									? updates.manuallyAssigned
 									: meta[id]?.manuallyAssigned || false,
+							ignoredDead:
+								updates.ignoredDead !== undefined
+									? updates.ignoredDead
+									: meta[id]?.ignoredDead || false,
 						};
 						return setStorageItem("bm_metadata_bookmarks", meta);
 					},
@@ -608,6 +617,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 						updates.manuallyAssigned !== undefined
 							? updates.manuallyAssigned
 							: meta[id]?.manuallyAssigned || false,
+					ignoredDead:
+						updates.ignoredDead !== undefined
+							? updates.ignoredDead
+							: meta[id]?.ignoredDead || false,
 				};
 				setStorageItem("bm_metadata_bookmarks", meta).then(() => {
 					setBookmarks((prev) =>
@@ -698,6 +711,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 							newBm.manuallyAssigned !== undefined
 								? newBm.manuallyAssigned
 								: meta[newBm.id]?.manuallyAssigned || false,
+						ignoredDead:
+							newBm.ignoredDead !== undefined
+								? newBm.ignoredDead
+								: meta[newBm.id]?.ignoredDead || false,
 					};
 				});
 
@@ -725,6 +742,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 							bm.manuallyAssigned !== undefined
 								? bm.manuallyAssigned
 								: meta[bm.id]?.manuallyAssigned || false,
+						ignoredDead:
+							bm.ignoredDead !== undefined
+								? bm.ignoredDead
+								: meta[bm.id]?.ignoredDead || false,
 					};
 				});
 				setStorageItem("bm_metadata_bookmarks", meta).then(() => {

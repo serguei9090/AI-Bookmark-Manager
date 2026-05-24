@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { BookmarksView } from "./components/BookmarksView";
 import { CategoriesView } from "./components/CategoriesView";
-import { DuplicatesView } from "./components/DuplicatesView";
 import { HistoryView } from "./components/HistoryView";
 import { OrganizeView } from "./components/OrganizeView";
 import { SettingsView } from "./components/SettingsView";
 import { Sidebar } from "./components/Sidebar";
 import { SimplePopupView } from "./components/SimplePopupView";
+import { ToolsView } from "./components/ToolsView";
 import { AppProvider } from "./store";
 
 // Detect if running inside a real Chrome extension popup
@@ -47,7 +47,7 @@ function AppLayout() {
 					{activeTab === "bookmarks" && <BookmarksView />}
 					{activeTab === "organize" && <OrganizeView />}
 					{activeTab === "categories" && <CategoriesView />}
-					{activeTab === "duplicates" && <DuplicatesView />}
+					{activeTab === "tools" && <ToolsView />}
 					{activeTab === "history" && <HistoryView />}
 					{activeTab === "settings" && <SettingsView />}
 				</main>

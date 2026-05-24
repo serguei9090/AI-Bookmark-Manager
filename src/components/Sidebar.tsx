@@ -1,11 +1,11 @@
 import {
 	BookmarkIcon,
 	Bot,
-	Copy,
 	History,
 	ListFilter,
 	Settings,
 	Sparkles,
+	Wrench,
 } from "lucide-react";
 
 type SidebarProps = {
@@ -17,7 +17,7 @@ const tabs = [
 	{ id: "bookmarks", label: "Bookmarks", icon: BookmarkIcon },
 	{ id: "organize", label: "Organize", icon: ListFilter },
 	{ id: "categories", label: "AI Categories", icon: Sparkles },
-	{ id: "duplicates", label: "Duplicates", icon: Copy },
+	{ id: "tools", label: "Tools", icon: Wrench },
 	{ id: "history", label: "History", icon: History },
 	{ id: "settings", label: "Settings", icon: Settings },
 ];
