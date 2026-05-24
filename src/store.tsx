@@ -5,6 +5,7 @@ import React, {
 	useEffect,
 	useState,
 } from "react";
+import { autoSortBookmarks, summarizeBookmark } from "./services/aiService";
 import type {
 	Bookmark,
 	Folder,
@@ -39,6 +40,8 @@ const initialSettings: Settings = {
 	lmstudioApiKey: "",
 	customApiKey: "",
 	maxHistoryEntries: 10,
+	autoOrganizeEnabled: false,
+	monitoredFolderId: "",
 };
 
 // Check if running inside a Chrome Extension with Bookmarks API
@@ -403,38 +406,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 		}
 	}, [initializeHistoryIfEmpty]);
 
-	// Sync event listeners for external Chrome Bookmark updates
-	useEffect(() => {
-		loadData();
-
-		if (isExtension) {
-			const handleCreated = () => {
-				if (!isReconcilingRef.current) loadData();
-			};
-			const handleRemoved = () => {
-				if (!isReconcilingRef.current) loadData();
-			};
-			const handleChanged = () => {
-				if (!isReconcilingRef.current) loadData();
-			};
-			const handleMoved = () => {
-				if (!isReconcilingRef.current) loadData();
-			};
-
-			chrome.bookmarks.onCreated.addListener(handleCreated);
-			chrome.bookmarks.onRemoved.addListener(handleRemoved);
-			chrome.bookmarks.onChanged.addListener(handleChanged);
-			chrome.bookmarks.onMoved.addListener(handleMoved);
-
-			return () => {
-				chrome.bookmarks.onCreated.removeListener(handleCreated);
-				chrome.bookmarks.onRemoved.removeListener(handleRemoved);
-				chrome.bookmarks.onChanged.removeListener(handleChanged);
-				chrome.bookmarks.onMoved.removeListener(handleMoved);
-			};
-		}
-	}, [loadData]);
-
 	// Save updates in sandbox mode to localStorage
 	useEffect(() => {
 		if (!isExtension) {
@@ -508,22 +479,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 		setStorageItem("bm_last_scan_results", lastScanResults);
 	}, [lastScanResults]);
 
-	const pushHistory = (
-		description: string,
-		currentBookmarks: Bookmark[],
-		currentFolders: Folder[],
-	) => {
-		setHistory((prev) => {
-			const entry: HistoryEntry = {
-				id: crypto.randomUUID(),
-				bookmarks: currentBookmarks,
-				folders: currentFolders,
-				timestamp: Date.now(),
-				description,
-			};
-			return [entry, ...prev].slice(0, settings.maxHistoryEntries || 10);
-		});
-	};
+	const pushHistory = useCallback(
+		(
+			description: string,
+			currentBookmarks: Bookmark[],
+			currentFolders: Folder[],
+		) => {
+			setHistory((prev) => {
+				const entry: HistoryEntry = {
+					id: crypto.randomUUID(),
+					bookmarks: currentBookmarks,
+					folders: currentFolders,
+					timestamp: Date.now(),
+					description,
+				};
+				return [entry, ...prev].slice(0, settings.maxHistoryEntries || 10);
+			});
+		},
+		[settings.maxHistoryEntries],
+	);
 
 	const addBookmark = (bookmark: Bookmark) => {
 		if (isExtension) {
@@ -560,6 +534,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 								folders,
 							);
 							isReconcilingRef.current = false;
+							triggerAutoOrganize(
+								created.id,
+								created.title,
+								created.url || "",
+								created.parentId || null,
+							);
 						});
 					});
 				},
@@ -584,6 +564,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 						folders,
 					);
 					setBookmarks((prev) => [newBookmark, ...prev]);
+					triggerAutoOrganize(
+						newBookmark.id,
+						newBookmark.title,
+						newBookmark.url,
+						newBookmark.folderId,
+					);
 				});
 			});
 		}
@@ -857,63 +843,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 		}
 	};
 
-	const addFolder = (
-		folder: Omit<Folder, "id"> & { id?: string },
-	): Promise<string> => {
-		return new Promise((resolve) => {
-			const folderId = folder.id || crypto.randomUUID();
-			if (isExtension) {
-				isReconcilingRef.current = true;
-				chrome.bookmarks.create(
-					{
-						parentId: safeParentId(folder.parentId),
-						title: folder.name,
-					},
-					(created) => {
-						if (!created) {
-							isReconcilingRef.current = false;
-							console.error(
-								"Failed to create folder:",
-								chrome.runtime.lastError,
-							);
-							resolve("");
-							return;
-						}
-						getStorageItem("bm_metadata_folders").then((currentMeta) => {
-							const meta = currentMeta || {};
-							meta[created.id] = {
-								promptContext: folder.promptContext || "",
-							};
-							setStorageItem("bm_metadata_folders", meta).then(async () => {
-								await loadData();
-								pushHistory(`Added folder: ${folder.name}`, bookmarks, folders);
+	const addFolder = useCallback(
+		(folder: Omit<Folder, "id"> & { id?: string }): Promise<string> => {
+			return new Promise((resolve) => {
+				const folderId = folder.id || crypto.randomUUID();
+				if (isExtension) {
+					isReconcilingRef.current = true;
+					chrome.bookmarks.create(
+						{
+							parentId: safeParentId(folder.parentId),
+							title: folder.name,
+						},
+						(created) => {
+							if (!created) {
 								isReconcilingRef.current = false;
-								resolve(created.id);
+								console.error(
+									"Failed to create folder:",
+									chrome.runtime.lastError,
+								);
+								resolve("");
+								return;
+							}
+							getStorageItem("bm_metadata_folders").then((currentMeta) => {
+								const meta = currentMeta || {};
+								meta[created.id] = {
+									promptContext: folder.promptContext || "",
+								};
+								setStorageItem("bm_metadata_folders", meta).then(async () => {
+									await loadData();
+									pushHistory(
+										`Added folder: ${folder.name}`,
+										bookmarks,
+										folders,
+									);
+									isReconcilingRef.current = false;
+									resolve(created.id);
+								});
 							});
-						});
-					},
-				);
-			} else {
-				const newFolder: Folder = {
-					parentId: folder.parentId,
-					name: folder.name,
-					promptContext: folder.promptContext || "",
-					id: folderId,
-				};
-				getStorageItem("bm_metadata_folders").then((currentMeta) => {
-					const meta = currentMeta || {};
-					meta[newFolder.id] = {
-						promptContext: newFolder.promptContext || "",
+						},
+					);
+				} else {
+					const newFolder: Folder = {
+						parentId: folder.parentId,
+						name: folder.name,
+						promptContext: folder.promptContext || "",
+						id: folderId,
 					};
-					setStorageItem("bm_metadata_folders", meta).then(() => {
-						pushHistory(`Added folder: ${newFolder.name}`, bookmarks, folders);
-						setFolders((prev) => [...prev, newFolder]);
-						resolve(newFolder.id);
+					getStorageItem("bm_metadata_folders").then((currentMeta) => {
+						const meta = currentMeta || {};
+						meta[newFolder.id] = {
+							promptContext: newFolder.promptContext || "",
+						};
+						setStorageItem("bm_metadata_folders", meta).then(() => {
+							pushHistory(
+								`Added folder: ${newFolder.name}`,
+								bookmarks,
+								folders,
+							);
+							setFolders((prev) => [...prev, newFolder]);
+							resolve(newFolder.id);
+						});
 					});
-				});
-			}
-		});
-	};
+				}
+			});
+		},
+		[bookmarks, folders, loadData, pushHistory],
+	);
 
 	const updateFolder = (id: string, updates: Partial<Folder>) => {
 		const fol = folders.find((f) => f.id === id);
@@ -1498,6 +1493,194 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 		const clean = site.trim().toLowerCase();
 		setIgnoredSites((prev) => prev.filter((s) => s !== clean));
 	}, []);
+
+	const triggerAutoOrganize = useCallback(
+		async (id: string, title: string, url: string, folderId: string | null) => {
+			if (!settings.autoOrganizeEnabled) return;
+
+			let targetMonitoredId = settings.monitoredFolderId || "";
+
+			if (
+				!targetMonitoredId ||
+				!folders.some((f) => f.id === targetMonitoredId)
+			) {
+				const existing = folders.find((f) => f.name.toLowerCase() === "tosort");
+				if (existing) {
+					targetMonitoredId = existing.id;
+					setSettings((prev) => ({ ...prev, monitoredFolderId: existing.id }));
+				} else {
+					const newFolderId = await addFolder({
+						parentId: null,
+						name: "ToSort",
+						promptContext: "Folder monitored for AI Auto-Organization",
+					});
+					targetMonitoredId = newFolderId;
+					setSettings((prev) => ({
+						...prev,
+						monitoredFolderId: newFolderId,
+					}));
+				}
+			}
+
+			if (folderId !== targetMonitoredId) return;
+
+			try {
+				const bmObj: Bookmark = {
+					id,
+					title,
+					url,
+					folderId,
+					tags: [],
+					summary: "",
+					dateAdded: Date.now(),
+				};
+
+				const aiResult = await summarizeBookmark(bmObj, settings);
+
+				const bmWithAi: Bookmark = {
+					...bmObj,
+					tags: aiResult.tags,
+					summary: aiResult.summary,
+				};
+
+				const sortingMapping = await autoSortBookmarks(
+					[bmWithAi],
+					aiFolders,
+					settings,
+				);
+
+				let destRealFolderId: string | null = null;
+				const matchedAiFolderId = sortingMapping[id];
+				if (matchedAiFolderId) {
+					const aiFolder = aiFolders.find((f) => f.id === matchedAiFolderId);
+					if (aiFolder) {
+						const existingReal = folders.find(
+							(rf) =>
+								rf.id === aiFolder.id ||
+								rf.name.toLowerCase() === aiFolder.name.toLowerCase(),
+						);
+						if (existingReal) {
+							destRealFolderId = existingReal.id;
+						} else {
+							const createdId = await addFolder({
+								parentId: null,
+								name: aiFolder.name,
+								promptContext: aiFolder.promptContext || "",
+							});
+							destRealFolderId = createdId;
+						}
+					}
+				}
+
+				if (isExtension) {
+					isReconcilingRef.current = true;
+					const promises: Promise<unknown>[] = [];
+
+					const metadataPromise = getStorageItem("bm_metadata_bookmarks").then(
+						(currentMeta) => {
+							const meta = (currentMeta as Record<string, unknown>) || {};
+							meta[id] = {
+								tags: aiResult.tags,
+								summary: aiResult.summary,
+								manuallyAssigned: false,
+								ignoredDead: false,
+							};
+							return setStorageItem("bm_metadata_bookmarks", meta);
+						},
+					);
+					promises.push(metadataPromise);
+
+					if (destRealFolderId) {
+						const movePromise = new Promise<void>((resolve) => {
+							chrome.bookmarks.move(
+								id,
+								{ parentId: destRealFolderId || "1" },
+								() => resolve(),
+							);
+						});
+						promises.push(movePromise);
+					}
+
+					await Promise.all(promises);
+					await loadData();
+					isReconcilingRef.current = false;
+				} else {
+					getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
+						const meta = (currentMeta as Record<string, unknown>) || {};
+						meta[id] = {
+							tags: aiResult.tags,
+							summary: aiResult.summary,
+							manuallyAssigned: false,
+							ignoredDead: false,
+						};
+						setStorageItem("bm_metadata_bookmarks", meta).then(() => {
+							setBookmarks((prev) =>
+								prev.map((b) =>
+									b.id === id
+										? {
+												...b,
+												tags: aiResult.tags,
+												summary: aiResult.summary,
+												folderId: destRealFolderId,
+											}
+										: b,
+								),
+							);
+						});
+					});
+				}
+			} catch (err) {
+				console.error("AI Auto-Organize failed for bookmark:", id, err);
+			}
+		},
+		[settings, folders, aiFolders, addFolder, loadData],
+	);
+
+	// Sync event listeners for external Chrome Bookmark updates
+	useEffect(() => {
+		loadData();
+
+		if (isExtension) {
+			const handleCreated = (
+				id: string,
+				node: chrome.bookmarks.BookmarkTreeNode,
+			) => {
+				if (!isReconcilingRef.current) {
+					loadData().then(() => {
+						if (node.url) {
+							triggerAutoOrganize(
+								id,
+								node.title,
+								node.url,
+								node.parentId || null,
+							);
+						}
+					});
+				}
+			};
+			const handleRemoved = () => {
+				if (!isReconcilingRef.current) loadData();
+			};
+			const handleChanged = () => {
+				if (!isReconcilingRef.current) loadData();
+			};
+			const handleMoved = () => {
+				if (!isReconcilingRef.current) loadData();
+			};
+
+			chrome.bookmarks.onCreated.addListener(handleCreated);
+			chrome.bookmarks.onRemoved.addListener(handleRemoved);
+			chrome.bookmarks.onChanged.addListener(handleChanged);
+			chrome.bookmarks.onMoved.addListener(handleMoved);
+
+			return () => {
+				chrome.bookmarks.onCreated.removeListener(handleCreated);
+				chrome.bookmarks.onRemoved.removeListener(handleRemoved);
+				chrome.bookmarks.onChanged.removeListener(handleChanged);
+				chrome.bookmarks.onMoved.removeListener(handleMoved);
+			};
+		}
+	}, [loadData, triggerAutoOrganize]);
 
 	const clearHealthScanHistory = useCallback(() => {
 		setHealthScanHistory([]);

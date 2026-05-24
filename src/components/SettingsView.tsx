@@ -4,6 +4,7 @@ import {
 	Server,
 	Settings as SettingsIcon,
 	Sliders,
+	Sparkles,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAppContext } from "../store";
@@ -52,7 +53,7 @@ const resolveApiKey = (settings: Settings): string => {
 };
 
 export function SettingsView() {
-	const { settings, setSettings } = useAppContext();
+	const { settings, setSettings, folders } = useAppContext();
 	const [localSaving, setLocalSaving] = useState(false);
 	const [isFetching, setIsFetching] = useState(false);
 	const [fetchedModels, setFetchedModels] = useState<string[]>([]);
@@ -676,6 +677,81 @@ export function SettingsView() {
 						<span>50 entries (default 10)</span>
 					</div>
 				</div>
+			</div>
+
+			{/* SECTION 3: AI Auto-Organize Configuration */}
+			<div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 space-y-6">
+				<div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-3">
+					<div className="flex items-center gap-2">
+						<Sparkles className="text-blue-500" size={20} />
+						<h3 className="font-semibold text-lg dark:text-white">
+							AI Auto-Organize
+						</h3>
+					</div>
+					<button
+						type="button"
+						onClick={() =>
+							setSettings({
+								...settings,
+								autoOrganizeEnabled: !settings.autoOrganizeEnabled,
+							})
+						}
+						className={`w-12 h-6 rounded-full transition-colors flex items-center ${
+							settings.autoOrganizeEnabled ? "bg-blue-600" : "bg-gray-300"
+						} px-1`}
+					>
+						<div
+							className={`w-4 h-4 rounded-full bg-white transition-transform ${
+								settings.autoOrganizeEnabled ? "translate-x-6" : "translate-x-0"
+							}`}
+						/>
+					</button>
+				</div>
+
+				<p className="text-sm text-gray-500 dark:text-gray-400">
+					Automatically summarize, tag, and sort new bookmarks using AI. When
+					you create a bookmark (via the UI or browser Star) in the monitored
+					folder, it will be automatically processed and relocated to its
+					relevant category folder.
+				</p>
+
+				{settings.autoOrganizeEnabled && (
+					<div className="space-y-4 pt-2 border-t border-gray-100 dark:border-gray-750">
+						<div>
+							<label
+								htmlFor="monitored-folder"
+								className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+							>
+								Monitored Bookmark Folder
+							</label>
+							<select
+								id="monitored-folder"
+								value={settings.monitoredFolderId ?? ""}
+								onChange={(e) =>
+									setSettings({
+										...settings,
+										monitoredFolderId: e.target.value,
+									})
+								}
+								className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+							>
+								<option value="">
+									— Auto-create ToSort folder (Default) —
+								</option>
+								{folders.map((f) => (
+									<option key={f.id} value={f.id}>
+										{f.name}
+									</option>
+								))}
+							</select>
+							<p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+								Select a folder to monitor. If you choose the default option, a
+								folder named <strong>ToSort</strong> will be automatically
+								created and monitored.
+							</p>
+						</div>
+					</div>
+				)}
 			</div>
 
 			{/* FOOTER ACTIONS */}

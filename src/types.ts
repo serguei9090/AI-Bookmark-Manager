@@ -40,6 +40,8 @@ export type Settings = {
 	lmstudioApiKey?: string;
 	customApiKey?: string;
 	maxHistoryEntries?: number;
+	autoOrganizeEnabled?: boolean;
+	monitoredFolderId?: string;
 };
 
 export type Proposal = {
