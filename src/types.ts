@@ -54,3 +54,25 @@ export type HistoryEntry = {
 	timestamp: number;
 	description: string;
 };
+
+export type HealthScanHistoryEntry = {
+	id: string;
+	timestamp: number;
+	folderId: string;
+	folderName: string;
+	summary: {
+		alive: number;
+		dead: number;
+		unhealthy: number;
+		ignored: number;
+	};
+	results: Record<string, { alive: boolean; status: number; message: string }>;
+};
+
+export type LastScanResultsState = {
+	results: Record<string, { alive: boolean; status: number; message: string }>;
+	scopeFolderId: string;
+	scanState: "idle" | "scanning" | "complete";
+	scannedCount: number;
+	totalToScan: number;
+};

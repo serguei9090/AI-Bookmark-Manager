@@ -5,7 +5,14 @@ import React, {
 	useEffect,
 	useState,
 } from "react";
-import type { Bookmark, Folder, HistoryEntry, Settings } from "./types";
+import type {
+	Bookmark,
+	Folder,
+	HealthScanHistoryEntry,
+	HistoryEntry,
+	LastScanResultsState,
+	Settings,
+} from "./types";
 
 // Initial Data
 const initialBookmarks: Bookmark[] = [];
@@ -191,6 +198,18 @@ type AppContextType = {
 	clearHistory: () => void;
 	injectPresetData: (name: string, bms: Bookmark[], fols: Folder[]) => void;
 	clearDatabase: () => void;
+	ignoredSites: string[];
+	addIgnoredSite: (site: string) => void;
+	removeIgnoredSite: (site: string) => void;
+	healthScanHistory: HealthScanHistoryEntry[];
+	setHealthScanHistory: React.Dispatch<
+		React.SetStateAction<HealthScanHistoryEntry[]>
+	>;
+	clearHealthScanHistory: () => void;
+	lastScanResults: LastScanResultsState | null;
+	setLastScanResults: React.Dispatch<
+		React.SetStateAction<LastScanResultsState | null>
+	>;
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -237,6 +256,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 		const saved = localStorage.getItem("bm_history");
 		return saved ? JSON.parse(saved) : [];
 	});
+
+	const [ignoredSites, setIgnoredSites] = useState<string[]>([]);
+	const [healthScanHistory, setHealthScanHistory] = useState<
+		HealthScanHistoryEntry[]
+	>([]);
+	const [lastScanResults, setLastScanResults] =
+		useState<LastScanResultsState | null>(null);
 
 	const initializeHistoryIfEmpty = useCallback(
 		(bms: Bookmark[], fols: Folder[]) => {
@@ -434,6 +460,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 				setHistory(savedHistory);
 			}
 		});
+		getStorageItem<string[]>("bm_ignored_sites").then((saved) => {
+			if (saved) {
+				setIgnoredSites(saved);
+			}
+		});
+		getStorageItem<HealthScanHistoryEntry[]>("bm_health_scan_history").then(
+			(saved) => {
+				if (saved) {
+					setHealthScanHistory(saved);
+				}
+			},
+		);
+		getStorageItem<LastScanResultsState>("bm_last_scan_results").then(
+			(saved) => {
+				if (saved) {
+					setLastScanResults(saved);
+				}
+			},
+		);
 	}, []);
 
 	useEffect(() => {
@@ -450,6 +495,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 	useEffect(() => {
 		setStorageItem("bm_history", history);
 	}, [history]);
+
+	useEffect(() => {
+		setStorageItem("bm_ignored_sites", ignoredSites);
+	}, [ignoredSites]);
+
+	useEffect(() => {
+		setStorageItem("bm_health_scan_history", healthScanHistory);
+	}, [healthScanHistory]);
+
+	useEffect(() => {
+		setStorageItem("bm_last_scan_results", lastScanResults);
+	}, [lastScanResults]);
 
 	const pushHistory = (
 		description: string,
@@ -1428,6 +1485,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 		setStorageItem("bm_blueprint_folders", next);
 	};
 
+	const addIgnoredSite = useCallback((site: string) => {
+		const clean = site.trim().toLowerCase();
+		if (!clean) return;
+		setIgnoredSites((prev) => {
+			if (prev.includes(clean)) return prev;
+			return [...prev, clean];
+		});
+	}, []);
+
+	const removeIgnoredSite = useCallback((site: string) => {
+		const clean = site.trim().toLowerCase();
+		setIgnoredSites((prev) => prev.filter((s) => s !== clean));
+	}, []);
+
+	const clearHealthScanHistory = useCallback(() => {
+		setHealthScanHistory([]);
+	}, []);
+
 	return (
 		<AppContext.Provider
 			value={{
@@ -1457,6 +1532,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 				clearHistory,
 				injectPresetData,
 				clearDatabase,
+				ignoredSites,
+				addIgnoredSite,
+				removeIgnoredSite,
+				healthScanHistory,
+				setHealthScanHistory,
+				clearHealthScanHistory,
+				lastScanResults,
+				setLastScanResults,
 			}}
 		>
 			{children}
