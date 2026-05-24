@@ -807,7 +807,7 @@ export function BookmarksView() {
 											type="button"
 											onClick={() => {
 												if (
-													window.confirm(
+													globalThis.confirm(
 														`Are you sure you want to delete the bookmark "${bm.title}"?`,
 													)
 												) {
