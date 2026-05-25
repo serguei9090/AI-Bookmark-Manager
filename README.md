@@ -5,8 +5,6 @@
 * **Status:** Personal sandbox / Portfolio piece.
 * **License:** This project is open-source and available for public educational use under the MIT License.
 * **Purpose:** Academic research and technical skill development.
-* **License:** This project is for study purposes and is MIT open source license.
-
 
 An AI-powered bookmark manager acting as an interactive Chrome extension simulator. Features semantic categorization, auto-tagging, summary generation, dark mode, duplicate detection, and a persistent 10-state undo/revert database history.
 
