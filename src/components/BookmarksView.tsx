@@ -27,6 +27,10 @@ export function BookmarksView() {
 		addBookmark,
 		settings,
 		triggerAutoOrganize,
+		isBulkSummarizing,
+		bulkProgress,
+		handleBulkSummarize,
+		stopBulkSummarize,
 	} = useAppContext();
 	const [search, setSearch] = useState("");
 	const [selectedFolderFilter, setSelectedFolderFilter] =
@@ -53,13 +57,9 @@ export function BookmarksView() {
 		};
 	}, []);
 
-	// Bulk Summarize state
-	const [isBulkSummarizing, setIsBulkSummarizing] = useState(false);
-	const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
 	const [showBulkConfirm, setShowBulkConfirm] = useState<{
 		mode: "unsummarized" | "all";
 	} | null>(null);
-	const bulkAbortRef = useRef(false);
 
 	// Tag editing state
 	const [editingTagsId, setEditingTagsId] = useState<string | null>(null);
@@ -160,75 +160,6 @@ export function BookmarksView() {
 		} finally {
 			setSummarizingId(null);
 		}
-	};
-
-	// Bulk Summarize logic
-	const handleBulkSummarize = async (mode: "unsummarized" | "all") => {
-		setIsBulkSummarizing(true);
-		bulkAbortRef.current = false;
-
-		// Filter bookmarks based on mode
-		const targetBookmarks = bookmarks.filter((b) => {
-			if (mode === "unsummarized") {
-				return b.summary === "";
-			}
-			return true; // all
-		});
-
-		const total = targetBookmarks.length;
-		setBulkProgress({ done: 0, total });
-		setShowBulkConfirm(null);
-
-		if (total === 0) {
-			setIsBulkSummarizing(false);
-			return;
-		}
-
-		const batchSize = 3;
-		let doneCount = 0;
-
-		for (let i = 0; i < total; i += batchSize) {
-			if (bulkAbortRef.current) {
-				break;
-			}
-
-			const batch = targetBookmarks.slice(i, i + batchSize);
-
-			await Promise.all(
-				batch.map(async (bm) => {
-					if (bulkAbortRef.current) return;
-					try {
-						const data = await summarizeBookmark(bm, settings);
-						const newTags =
-							Array.isArray(data.tags) && data.tags.length > 0
-								? Array.from(new Set(data.tags))
-								: ["ai-generated"];
-
-						updateBookmark(bm.id, {
-							summary: data.summary || "Summary generated successfully.",
-							tags: newTags,
-						});
-					} catch (e) {
-						console.error(`Bulk summarize failed for ${bm.title}:`, e);
-						const errMsg = e instanceof Error ? e.message : "connection failed";
-						updateBookmark(bm.id, {
-							summary: `Failsafe Summary for ${bm.title}: expert reference. (Error: ${errMsg})`,
-							tags: ["failsafe", "ai"],
-						});
-					}
-					doneCount++;
-					setBulkProgress((prev) => ({ ...prev, done: doneCount }));
-				}),
-			);
-		}
-
-		setIsBulkSummarizing(false);
-		setShowBulkConfirm(null);
-	};
-
-	const stopBulkSummarize = () => {
-		bulkAbortRef.current = true;
-		setIsBulkSummarizing(false);
 	};
 
 	const filteredBookmarks = useMemo(() => {
@@ -413,7 +344,10 @@ export function BookmarksView() {
 							</button>
 							<button
 								type="button"
-								onClick={() => handleBulkSummarize(showBulkConfirm.mode)}
+								onClick={() => {
+									handleBulkSummarize(showBulkConfirm.mode);
+									setShowBulkConfirm(null);
+								}}
 								className="bg-purple-600 hover:bg-purple-700 text-white font-medium px-5 py-2 rounded-xl text-sm transition-all cursor-pointer"
 							>
 								Start Processing

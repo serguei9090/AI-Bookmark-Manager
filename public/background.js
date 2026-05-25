@@ -442,6 +442,14 @@ async function updateExtensionBadge() {
 			chrome.action.setTitle({ title: "AI Bookmark Manager" });
 		}
 	} catch (err) {
+		if (
+			err?.message &&
+			(err.message.includes("No SW Context") ||
+				err.message.includes("context invalidated") ||
+				err.message.includes("Extension context invalidated"))
+		) {
+			return;
+		}
 		console.error("Failed to update extension badge:", err);
 	}
 }

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-24
+
+### Added
+- **Global Toast Notification System**: Added floating toast alerts for actions like bulk summarization, AI auto-organize start/success/warnings, and system notifications.
+- **Persistent Background Bulk Summarization**: Hoisted bulk summarization state and async loops to global `AppContext` (`store.tsx`) so the process continues seamlessly when navigating between sidebar pages.
+- **Failed Bookmark AI Processing Tracker & Badge Counter**:
+  - Automatically flags bookmarks that failed AI categorization with an `aiFailed` status.
+  - Implemented an extension toolbar icon badge counter to display the number of pending failed items.
+  - Added list views and retry actions in Dashboard Settings, Extension Popup, and a warning banner in Simple Popup View.
+- **Chrome Extension Background Service Worker Integration**: Offloaded Link Health Checker network fetches to a Manifest V3 background service worker (`background.js`) to bypass CORS and prevent client console errors.
+- **Bookmarks View Scroll-to-Top**: Created a floating button on the bottom right corner of the Bookmarks list to quickly scroll back to the top of long collections.
+
+### Changed
+- **Bookmarks Statistics Refactor**: Removed the redundant "No Folder" folder count in the statistics panel, shifting layout to a clean 3-column grid.
+
 ## [0.4.2] - 2026-05-24
 
 ### Added

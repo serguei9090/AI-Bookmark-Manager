@@ -226,6 +226,10 @@ type AppContextType = {
 	toasts: Toast[];
 	addToast: (message: string, type: ToastType) => void;
 	removeToast: (id: string) => void;
+	isBulkSummarizing: boolean;
+	bulkProgress: { done: number; total: number };
+	handleBulkSummarize: (mode: "unsummarized" | "all") => Promise<void>;
+	stopBulkSummarize: () => void;
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -292,6 +296,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 	const removeToast = useCallback((id: string) => {
 		setToasts((prev) => prev.filter((t) => t.id !== id));
 	}, []);
+
+	// Bulk Summarize background states
+	const [isBulkSummarizing, setIsBulkSummarizing] = useState(false);
+	const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+	const bulkAbortRef = React.useRef(false);
 
 	const initializeHistoryIfEmpty = useCallback(
 		(bms: Bookmark[], fols: Folder[]) => {
@@ -603,104 +612,180 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 		}
 	};
 
-	const updateBookmark = (id: string, updates: Partial<Bookmark>) => {
-		const bm = bookmarks.find((b) => b.id === id);
-		if (!bm) return;
-		pushHistory(`Updated bookmark: ${bm.title}`, bookmarks, folders);
+	const updateBookmark = useCallback(
+		(id: string, updates: Partial<Bookmark>) => {
+			const bm = bookmarks.find((b) => b.id === id);
+			if (!bm) return;
+			pushHistory(`Updated bookmark: ${bm.title}`, bookmarks, folders);
 
-		if (isExtension) {
-			isReconcilingRef.current = true;
-			const promises: Promise<unknown>[] = [];
+			if (isExtension) {
+				isReconcilingRef.current = true;
+				const promises: Promise<unknown>[] = [];
 
-			const title = updates.title !== undefined ? updates.title : undefined;
-			const url = updates.url !== undefined ? updates.url : undefined;
+				const title = updates.title !== undefined ? updates.title : undefined;
+				const url = updates.url !== undefined ? updates.url : undefined;
 
-			if (title !== undefined || url !== undefined) {
-				promises.push(
-					new Promise<void>((resolve) => {
-						safeBmUpdate(id, { title, url }, resolve);
-					}),
-				);
-			}
-
-			if (updates.folderId !== undefined && updates.folderId !== bm.folderId) {
-				const parentId = safeParentId(updates.folderId);
-				promises.push(
-					new Promise<void>((resolve) => {
-						safeBmMove(id, { parentId }, resolve);
-					}),
-				);
-			}
-
-			if (
-				updates.tags !== undefined ||
-				updates.summary !== undefined ||
-				updates.manuallyAssigned !== undefined ||
-				updates.ignoredDead !== undefined
-			) {
-				const metadataPromise = getStorageItem("bm_metadata_bookmarks").then(
-					(currentMeta) => {
-						const meta = currentMeta || {};
-						meta[id] = {
-							tags:
-								updates.tags !== undefined
-									? updates.tags
-									: meta[id]?.tags || [],
-							summary:
-								updates.summary !== undefined
-									? updates.summary
-									: meta[id]?.summary || "",
-							manuallyAssigned:
-								updates.manuallyAssigned !== undefined
-									? updates.manuallyAssigned
-									: meta[id]?.manuallyAssigned || false,
-							ignoredDead:
-								updates.ignoredDead !== undefined
-									? updates.ignoredDead
-									: meta[id]?.ignoredDead || false,
-						};
-						return setStorageItem("bm_metadata_bookmarks", meta);
-					},
-				);
-				promises.push(metadataPromise);
-			}
-
-			Promise.all(promises)
-				.then(async () => {
-					await loadData();
-					isReconcilingRef.current = false;
-				})
-				.catch((err) => {
-					isReconcilingRef.current = false;
-					console.error("Error updating bookmark:", err);
-				});
-		} else {
-			getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
-				const meta = currentMeta || {};
-				meta[id] = {
-					tags:
-						updates.tags !== undefined ? updates.tags : meta[id]?.tags || [],
-					summary:
-						updates.summary !== undefined
-							? updates.summary
-							: meta[id]?.summary || "",
-					manuallyAssigned:
-						updates.manuallyAssigned !== undefined
-							? updates.manuallyAssigned
-							: meta[id]?.manuallyAssigned || false,
-					ignoredDead:
-						updates.ignoredDead !== undefined
-							? updates.ignoredDead
-							: meta[id]?.ignoredDead || false,
-				};
-				setStorageItem("bm_metadata_bookmarks", meta).then(() => {
-					setBookmarks((prev) =>
-						prev.map((b) => (b.id === id ? { ...b, ...updates } : b)),
+				if (title !== undefined || url !== undefined) {
+					promises.push(
+						new Promise<void>((resolve) => {
+							safeBmUpdate(id, { title, url }, resolve);
+						}),
 					);
+				}
+
+				if (
+					updates.folderId !== undefined &&
+					updates.folderId !== bm.folderId
+				) {
+					const parentId = safeParentId(updates.folderId);
+					promises.push(
+						new Promise<void>((resolve) => {
+							safeBmMove(id, { parentId }, resolve);
+						}),
+					);
+				}
+
+				if (
+					updates.tags !== undefined ||
+					updates.summary !== undefined ||
+					updates.manuallyAssigned !== undefined ||
+					updates.ignoredDead !== undefined
+				) {
+					const metadataPromise = getStorageItem("bm_metadata_bookmarks").then(
+						(currentMeta) => {
+							const meta = currentMeta || {};
+							meta[id] = {
+								tags:
+									updates.tags !== undefined
+										? updates.tags
+										: meta[id]?.tags || [],
+								summary:
+									updates.summary !== undefined
+										? updates.summary
+										: meta[id]?.summary || "",
+								manuallyAssigned:
+									updates.manuallyAssigned !== undefined
+										? updates.manuallyAssigned
+										: meta[id]?.manuallyAssigned || false,
+								ignoredDead:
+									updates.ignoredDead !== undefined
+										? updates.ignoredDead
+										: meta[id]?.ignoredDead || false,
+							};
+							return setStorageItem("bm_metadata_bookmarks", meta);
+						},
+					);
+					promises.push(metadataPromise);
+				}
+
+				Promise.all(promises)
+					.then(async () => {
+						await loadData();
+						isReconcilingRef.current = false;
+					})
+					.catch((err) => {
+						isReconcilingRef.current = false;
+						console.error("Error updating bookmark:", err);
+					});
+			} else {
+				getStorageItem("bm_metadata_bookmarks").then((currentMeta) => {
+					const meta = currentMeta || {};
+					meta[id] = {
+						tags:
+							updates.tags !== undefined ? updates.tags : meta[id]?.tags || [],
+						summary:
+							updates.summary !== undefined
+								? updates.summary
+								: meta[id]?.summary || "",
+						manuallyAssigned:
+							updates.manuallyAssigned !== undefined
+								? updates.manuallyAssigned
+								: meta[id]?.manuallyAssigned || false,
+						ignoredDead:
+							updates.ignoredDead !== undefined
+								? updates.ignoredDead
+								: meta[id]?.ignoredDead || false,
+					};
+					setStorageItem("bm_metadata_bookmarks", meta).then(() => {
+						setBookmarks((prev) =>
+							prev.map((b) => (b.id === id ? { ...b, ...updates } : b)),
+						);
+					});
 				});
+			}
+		},
+		[bookmarks, folders, loadData, pushHistory],
+	);
+
+	const handleBulkSummarize = useCallback(
+		async (mode: "unsummarized" | "all") => {
+			setIsBulkSummarizing(true);
+			bulkAbortRef.current = false;
+
+			// Filter bookmarks based on mode
+			const targetBookmarks = bookmarks.filter((b) => {
+				if (mode === "unsummarized") {
+					return b.summary === "";
+				}
+				return true; // all
 			});
-		}
-	};
+
+			const total = targetBookmarks.length;
+			setBulkProgress({ done: 0, total });
+
+			if (total === 0) {
+				setIsBulkSummarizing(false);
+				return;
+			}
+
+			const batchSize = 3;
+			let doneCount = 0;
+
+			for (let i = 0; i < total; i += batchSize) {
+				if (bulkAbortRef.current) {
+					break;
+				}
+
+				const batch = targetBookmarks.slice(i, i + batchSize);
+
+				await Promise.all(
+					batch.map(async (bm) => {
+						if (bulkAbortRef.current) return;
+						try {
+							const data = await summarizeBookmark(bm, settings);
+							const newTags =
+								Array.isArray(data.tags) && data.tags.length > 0
+									? Array.from(new Set(data.tags))
+									: ["ai-generated"];
+
+							updateBookmark(bm.id, {
+								summary: data.summary || "Summary generated successfully.",
+								tags: newTags,
+							});
+						} catch (e) {
+							console.error(`Bulk summarize failed for ${bm.title}:`, e);
+							const errMsg =
+								e instanceof Error ? e.message : "connection failed";
+							updateBookmark(bm.id, {
+								summary: `Failsafe Summary for ${bm.title}: expert reference. (Error: ${errMsg})`,
+								tags: ["failsafe", "ai"],
+							});
+						}
+						doneCount++;
+						setBulkProgress((prev) => ({ ...prev, done: doneCount }));
+					}),
+				);
+			}
+
+			setIsBulkSummarizing(false);
+		},
+		[bookmarks, settings, updateBookmark],
+	);
+
+	const stopBulkSummarize = useCallback(() => {
+		bulkAbortRef.current = true;
+		setIsBulkSummarizing(false);
+	}, []);
 
 	const deleteBookmark = (id: string) => {
 		const bm = bookmarks.find((b) => b.id === id);
@@ -1803,6 +1888,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 				toasts,
 				addToast,
 				removeToast,
+				isBulkSummarizing,
+				bulkProgress,
+				handleBulkSummarize,
+				stopBulkSummarize,
 			}}
 		>
 			{children}
