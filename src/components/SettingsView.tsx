@@ -416,7 +416,7 @@ export function SettingsView() {
 						</span>
 					</div>
 
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+					<div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
 						<div>
 							<div className="flex justify-between items-center mb-2">
 								<label
@@ -487,6 +487,49 @@ export function SettingsView() {
 								{modelMeta[settings.model]?.outputTokenLimit
 									? `Auto-detected from model: ${modelMeta[settings.model].outputTokenLimit.toLocaleString()} tokens (0 = omit limit)`
 									: "Default 4096 · enter any value (e.g. 2048, 32768, 128000) · 0 = omit limit"}
+							</span>
+						</div>
+
+						<div>
+							<div className="flex justify-between items-center mb-2">
+								<label
+									htmlFor="setting-requests-limit"
+									className="text-sm font-medium text-gray-700 dark:text-gray-300"
+								>
+									Rate Limit (RPM)
+								</label>
+								<button
+									type="button"
+									onClick={() =>
+										setSettings({ ...settings, apiRequestsPerMinute: 15 })
+									}
+									className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold hover:underline"
+									title="Set default value of 15 Requests Per Minute"
+								>
+									Default (15)
+								</button>
+							</div>
+							<input
+								id="setting-requests-limit"
+								type="number"
+								min="0"
+								step="1"
+								value={settings.apiRequestsPerMinute ?? 15}
+								onChange={(e) => {
+									const val = parseInt(e.target.value, 10);
+									setSettings({
+										...settings,
+										apiRequestsPerMinute: Number.isNaN(val)
+											? 0
+											: Math.max(0, val),
+									});
+								}}
+								placeholder="e.g. 15, 60, 0"
+								className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl px-4 py-2.5 dark:text-white font-mono text-sm focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+							/>
+							<span className="block text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+								Requests Per Minute limit (e.g. for free Gemini API) · 0 =
+								unlimited
 							</span>
 						</div>
 					</div>

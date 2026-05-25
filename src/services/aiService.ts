@@ -108,13 +108,38 @@ export function getProviderConfig(settings: Settings): {
 	}
 }
 
+let lastRequestStartTime = 0;
+
+async function wait(ms: number) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function enforceRateLimit(settings: Settings): Promise<void> {
+	const rpm = settings.apiRequestsPerMinute ?? 15;
+	if (rpm <= 0) return;
+
+	const minInterval = 60000 / rpm;
+	const now = Date.now();
+	const timeSinceLast = now - lastRequestStartTime;
+
+	if (timeSinceLast < minInterval) {
+		const waitTime = minInterval - timeSinceLast;
+		lastRequestStartTime = lastRequestStartTime + minInterval;
+		await wait(waitTime);
+	} else {
+		lastRequestStartTime = now;
+	}
+}
+
 // Unified call helper to query LLM APIs directly
 async function callLlmDirect(
 	settings: Settings,
 	systemPrompt: string,
 	prompt: string,
 	responseSchema?: unknown,
+	jsonMode = true,
 ): Promise<string> {
+	await enforceRateLimit(settings);
 	const { provider, model, temperature, maxTokens } = settings;
 	const { url: baseUrl, apiKey } = getProviderConfig(settings);
 
@@ -129,135 +154,148 @@ async function callLlmDirect(
 		);
 	}
 
-	if (provider === "gemini") {
-		// Direct Gemini API call
-		const cleanBaseUrl = baseUrl.replace(/\/$/, "");
-		// Support custom path if user provided full v1/v1beta, otherwise default to v1beta
-		const isFullUrl = cleanBaseUrl.includes("/v1");
-		const apiUrl = isFullUrl
-			? `${cleanBaseUrl}/models/${model}:generateContent?key=${apiKey}`
-			: `${cleanBaseUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`;
+	const controller = new AbortController();
+	const timeoutId = setTimeout(() => {
+		controller.abort();
+	}, 30000); // 30-second timeout
 
-		const body: {
-			contents: Array<{
-				role: string;
-				parts: Array<{ text: string }>;
-			}>;
-			generationConfig: {
-				responseMimeType: string;
-				temperature: number;
-				maxOutputTokens?: number;
-				responseSchema?: unknown;
-			};
-		} = {
-			contents: [
-				{
-					role: "user",
-					parts: [{ text: `${systemPrompt}\n\n${prompt}` }],
+	try {
+		if (provider === "gemini") {
+			// Direct Gemini API call
+			const cleanBaseUrl = baseUrl.replace(/\/$/, "");
+			// Support custom path if user provided full v1/v1beta, otherwise default to v1beta
+			const isFullUrl = cleanBaseUrl.includes("/v1");
+			const apiUrl = isFullUrl
+				? `${cleanBaseUrl}/models/${model}:generateContent?key=${apiKey}`
+				: `${cleanBaseUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+			const body: {
+				contents: Array<{
+					role: string;
+					parts: Array<{ text: string }>;
+				}>;
+				generationConfig: {
+					responseMimeType?: string;
+					temperature: number;
+					maxOutputTokens?: number;
+					responseSchema?: unknown;
+				};
+			} = {
+				contents: [
+					{
+						role: "user",
+						parts: [{ text: `${systemPrompt}\n\n${prompt}` }],
+					},
+				],
+				generationConfig: {
+					temperature: temperature ?? 0.7,
+					...(maxTokens > 0 ? { maxOutputTokens: maxTokens } : {}),
 				},
-			],
-			generationConfig: {
-				responseMimeType: "application/json",
-				temperature: temperature ?? 0.7,
-				...(maxTokens > 0 ? { maxOutputTokens: maxTokens } : {}),
-			},
-		};
+			};
 
-		if (responseSchema) {
-			body.generationConfig.responseSchema = responseSchema;
+			if (jsonMode) {
+				body.generationConfig.responseMimeType = "application/json";
+				if (responseSchema) {
+					body.generationConfig.responseSchema = responseSchema;
+				}
+			}
+
+			const res = await fetch(apiUrl, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(body),
+				signal: controller.signal,
+			});
+
+			if (!res.ok) {
+				const errText = await res.text();
+				throw new Error(`Gemini API Error (${res.status}): ${errText}`);
+			}
+
+			const data = await res.json();
+			const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+			if (!content) {
+				throw new Error("Gemini API returned an empty or invalid structure.");
+			}
+			return content;
+		}
+
+		// OpenAI-compatible Chat Completions providers (openai, lmstudio, custom, and ollama fallback)
+		const cleanBaseUrl = baseUrl.replace(/\/$/, "");
+
+		// Decide which endpoint to hit
+		let apiUrl = `${cleanBaseUrl}/chat/completions`;
+		let requestBody: Record<string, unknown> = {};
+
+		const headers: Record<string, string> = {
+			"Content-Type": "application/json",
+		};
+		if (apiKey) {
+			headers.Authorization = `Bearer ${apiKey}`;
+		}
+
+		// Special handling for Ollama native generate endpoint if requested or URL indicates it
+		if (provider === "ollama" && cleanBaseUrl.endsWith("/api/generate")) {
+			apiUrl = cleanBaseUrl;
+			requestBody = {
+				model: model || "llama3",
+				prompt: `${systemPrompt}\n\n${prompt}`,
+				stream: false,
+				...(jsonMode ? { format: "json" } : {}),
+				options: {
+					temperature: temperature || 0.7,
+					...(maxTokens > 0 ? { num_predict: maxTokens } : {}),
+				},
+			};
+		} else {
+			// Standard chat completions for OpenAI, LMStudio, Custom, Ollama
+			requestBody = {
+				model: model || (provider === "openai" ? "gpt-4o-mini" : "local-model"),
+				messages: [
+					{ role: "system", content: systemPrompt },
+					{ role: "user", content: prompt },
+				],
+				temperature: temperature || 0.7,
+				...(maxTokens > 0 ? { max_tokens: maxTokens } : {}),
+				...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+			};
 		}
 
 		const res = await fetch(apiUrl, {
 			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify(body),
+			headers,
+			body: JSON.stringify(requestBody),
+			signal: controller.signal,
 		});
 
 		if (!res.ok) {
 			const errText = await res.text();
-			throw new Error(`Gemini API Error (${res.status}): ${errText}`);
+			throw new Error(
+				`${provider.toUpperCase()} API Error (${res.status}): ${errText}`,
+			);
 		}
 
 		const data = await res.json();
-		const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-		if (!content) {
-			throw new Error("Gemini API returned an empty or invalid structure.");
+
+		if (provider === "ollama" && cleanBaseUrl.endsWith("/api/generate")) {
+			if (!data.response) {
+				throw new Error("Ollama API returned an empty response.");
+			}
+			return data.response;
+		}
+
+		const content = data.choices?.[0]?.message?.content;
+		if (content === undefined || content === null) {
+			throw new Error(
+				`${provider.toUpperCase()} API returned an empty content payload.`,
+			);
 		}
 		return content;
+	} finally {
+		clearTimeout(timeoutId);
 	}
-
-	// OpenAI-compatible Chat Completions providers (openai, lmstudio, custom, and ollama fallback)
-	const cleanBaseUrl = baseUrl.replace(/\/$/, "");
-
-	// Decide which endpoint to hit
-	let apiUrl = `${cleanBaseUrl}/chat/completions`;
-	let requestBody: Record<string, unknown> = {};
-
-	const headers: Record<string, string> = {
-		"Content-Type": "application/json",
-	};
-	if (apiKey) {
-		headers.Authorization = `Bearer ${apiKey}`;
-	}
-
-	// Special handling for Ollama native generate endpoint if requested or URL indicates it
-	if (provider === "ollama" && cleanBaseUrl.endsWith("/api/generate")) {
-		apiUrl = cleanBaseUrl;
-		requestBody = {
-			model: model || "llama3",
-			prompt: `${systemPrompt}\n\n${prompt}`,
-			stream: false,
-			format: "json",
-			options: {
-				temperature: temperature || 0.7,
-				...(maxTokens > 0 ? { num_predict: maxTokens } : {}),
-			},
-		};
-	} else {
-		// Standard chat completions for OpenAI, LMStudio, Custom, Ollama
-		requestBody = {
-			model: model || (provider === "openai" ? "gpt-4o-mini" : "local-model"),
-			messages: [
-				{ role: "system", content: systemPrompt },
-				{ role: "user", content: prompt },
-			],
-			temperature: temperature || 0.7,
-			...(maxTokens > 0 ? { max_tokens: maxTokens } : {}),
-			response_format: { type: "json_object" },
-		};
-	}
-
-	const res = await fetch(apiUrl, {
-		method: "POST",
-		headers,
-		body: JSON.stringify(requestBody),
-	});
-
-	if (!res.ok) {
-		const errText = await res.text();
-		throw new Error(
-			`${provider.toUpperCase()} API Error (${res.status}): ${errText}`,
-		);
-	}
-
-	const data = await res.json();
-
-	if (provider === "ollama" && cleanBaseUrl.endsWith("/api/generate")) {
-		if (!data.response) {
-			throw new Error("Ollama API returned an empty response.");
-		}
-		return data.response;
-	}
-
-	const content = data.choices?.[0]?.message?.content;
-	if (content === undefined || content === null) {
-		throw new Error(
-			`${provider.toUpperCase()} API returned an empty content payload.`,
-		);
-	}
-	return content;
 }
 
 export async function summarizeBookmark(
@@ -280,18 +318,98 @@ Title: ${bookmark.title}`;
 		required: ["summary", "tags"],
 	};
 
-	const responseText = await callLlmDirect(
-		settings,
-		settings.systemPrompt ||
-			"You are an intelligent bookmark manager assistant.",
-		prompt,
-		schema,
-	);
+	let responseText = "";
+	try {
+		responseText = await callLlmDirect(
+			settings,
+			settings.systemPrompt ||
+				"You are an intelligent bookmark manager assistant.",
+			prompt,
+			schema,
+		);
+	} catch (e) {
+		console.warn(
+			"Attempt 1 (with schema) failed for summarize:",
+			bookmark.title,
+			e,
+		);
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			responseText = await callLlmDirect(
+				settings,
+				settings.systemPrompt ||
+					"You are an intelligent bookmark manager assistant.",
+				`${prompt}\nIMPORTANT: You must return ONLY a raw JSON object with keys "summary" (string) and "tags" (array of strings). Do NOT include any introductory or concluding text, markdown code blocks, or bullet points. Just start with '{' and end with '}'.`,
+				undefined,
+			);
+		} catch (e2) {
+			throw new Error(
+				`AI inference failed: ${e2 instanceof Error ? e2.message : String(e2)}`,
+			);
+		}
+	}
 
-	const parsed = cleanAndParseJson(responseText) as {
-		summary?: string;
-		tags?: string[];
-	};
+	let parsed: { summary?: string; tags?: string[] } = {};
+	try {
+		parsed = cleanAndParseJson(responseText) as {
+			summary?: string;
+			tags?: string[];
+		};
+	} catch (err) {
+		console.warn(
+			"JSON parsing failed, attempting text heuristic parsing for:",
+			responseText,
+			err,
+		);
+		// Try heuristic text parsing
+		const summaryMatch = responseText.match(
+			/(?:summary|desc|description):\s*([^\n]+)/iu,
+		);
+		const tagsMatch = responseText.match(/(?:tags|keywords):\s*([^\n]+)/iu);
+
+		let summary = "";
+		let tags: string[] = [];
+
+		if (summaryMatch?.[1]) {
+			summary = summaryMatch[1].trim();
+		} else {
+			// If no "summary:" header, take the first 1-2 sentences of the text as summary
+			const sentences = responseText
+				.split(/[.!?\n]+/u)
+				.map((s) => s.trim())
+				.filter(Boolean);
+			// Filter out bullet points/stars at the start of sentences
+			const cleanSentences = sentences
+				.map((s) => s.replace(/^[*\s\d.-]+/u, "").trim())
+				.filter(Boolean);
+			if (cleanSentences.length > 0) {
+				summary = `${cleanSentences.slice(0, 2).join(". ")}.`;
+			}
+		}
+
+		if (tagsMatch?.[1]) {
+			tags = tagsMatch[1]
+				.split(/[\s,#;]+/u)
+				.map((t) =>
+					t
+						.trim()
+						.toLowerCase()
+						.replace(/[^\p{L}\p{N}_-]+/gu, ""),
+				)
+				.filter(
+					(t) => t.length > 1 && !t.includes("tag") && !t.includes("keyword"),
+				);
+		} else {
+			// Try to find any hashtags in the text
+			const hashTags = responseText.match(/#\p{L}+/gu);
+			if (hashTags) {
+				tags = hashTags.map((t) => t.slice(1).toLowerCase());
+			}
+		}
+
+		parsed = { summary, tags };
+	}
+
 	return {
 		summary: parsed.summary ?? "",
 		tags: parsed.tags ?? [],
@@ -339,12 +457,25 @@ ${bookmarks.map((b) => `- ID: ${b.id}, URL: ${b.url}, Title: ${b.title}`).join("
 		required: ["mappings"],
 	};
 
-	const responseText = await callLlmDirect(
-		settings,
-		systemPrompt,
-		prompt,
-		schema,
-	);
+	let responseText = "";
+	try {
+		responseText = await callLlmDirect(settings, systemPrompt, prompt, schema);
+	} catch (e) {
+		console.warn("Attempt 1 (with schema) failed for autoSortBookmarks:", e);
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			responseText = await callLlmDirect(
+				settings,
+				systemPrompt,
+				`${prompt}\nIMPORTANT: You must return valid JSON with a single "mappings" key containing folder ID mapping objects.`,
+				undefined,
+			);
+		} catch (e2) {
+			throw new Error(
+				`AI inference failed: ${e2 instanceof Error ? e2.message : String(e2)}`,
+			);
+		}
+	}
 	const parsed = cleanAndParseJson(responseText) as {
 		mappings?: Array<{ bookmarkId: string; folderId: string | null }>;
 	};
@@ -399,12 +530,25 @@ ${bookmarks.map((b) => `- URL: ${b.url}, Title: ${b.title}`).join("\n")}`;
 		required: ["proposals"],
 	};
 
-	const responseText = await callLlmDirect(
-		settings,
-		systemPrompt,
-		prompt,
-		schema,
-	);
+	let responseText = "";
+	try {
+		responseText = await callLlmDirect(settings, systemPrompt, prompt, schema);
+	} catch (e) {
+		console.warn("Attempt 1 (with schema) failed for proposeCategories:", e);
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			responseText = await callLlmDirect(
+				settings,
+				systemPrompt,
+				`${prompt}\nIMPORTANT: You must return valid JSON with a single "proposals" key containing category objects.`,
+				undefined,
+			);
+		} catch (e2) {
+			throw new Error(
+				`AI inference failed: ${e2 instanceof Error ? e2.message : String(e2)}`,
+			);
+		}
+	}
 	const parsed = cleanAndParseJson(responseText) as {
 		proposals?: Proposal[];
 	};

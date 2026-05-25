@@ -120,20 +120,21 @@ export function BookmarksView() {
 		setSummarizingId(bookmark.id);
 		try {
 			const data = await summarizeBookmark(bookmark, settings);
+			const newTags =
+				Array.isArray(data.tags) && data.tags.length > 0
+					? Array.from(new Set(data.tags))
+					: ["ai-generated"];
+
 			updateBookmark(bookmark.id, {
 				summary: data.summary || "Summary generated successfully.",
-				tags:
-					Array.isArray(data.tags) && data.tags.length
-						? data.tags
-						: [...bookmark.tags, "ai-generated"],
+				tags: newTags,
 			});
 		} catch (e) {
 			console.error(e);
 			const errMsg = e instanceof Error ? e.message : "connection failed";
-			// Failover to client simulation
 			updateBookmark(bookmark.id, {
 				summary: `Failsafe Summary for ${bookmark.title}: Expert documentation and reference resource for programmers. (Error: ${errMsg})`,
-				tags: [...bookmark.tags, "failsafe", "ai"],
+				tags: ["failsafe", "ai"],
 			});
 		} finally {
 			setSummarizingId(null);
@@ -155,10 +156,10 @@ export function BookmarksView() {
 
 		const total = targetBookmarks.length;
 		setBulkProgress({ done: 0, total });
+		setShowBulkConfirm(null);
 
 		if (total === 0) {
 			setIsBulkSummarizing(false);
-			setShowBulkConfirm(null);
 			return;
 		}
 
@@ -177,19 +178,21 @@ export function BookmarksView() {
 					if (bulkAbortRef.current) return;
 					try {
 						const data = await summarizeBookmark(bm, settings);
+						const newTags =
+							Array.isArray(data.tags) && data.tags.length > 0
+								? Array.from(new Set(data.tags))
+								: ["ai-generated"];
+
 						updateBookmark(bm.id, {
 							summary: data.summary || "Summary generated successfully.",
-							tags:
-								Array.isArray(data.tags) && data.tags.length
-									? data.tags
-									: [...bm.tags, "ai-generated"],
+							tags: newTags,
 						});
 					} catch (e) {
 						console.error(`Bulk summarize failed for ${bm.title}:`, e);
 						const errMsg = e instanceof Error ? e.message : "connection failed";
 						updateBookmark(bm.id, {
 							summary: `Failsafe Summary for ${bm.title}: expert reference. (Error: ${errMsg})`,
-							tags: [...bm.tags, "failsafe", "ai"],
+							tags: ["failsafe", "ai"],
 						});
 					}
 					doneCount++;

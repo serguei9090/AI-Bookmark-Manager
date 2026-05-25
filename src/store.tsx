@@ -44,6 +44,7 @@ const initialSettings: Settings = {
 	maxHistoryEntries: 10,
 	autoOrganizeEnabled: false,
 	monitoredFolderId: "",
+	apiRequestsPerMinute: 15,
 };
 
 // Check if running inside a Chrome Extension with Bookmarks API

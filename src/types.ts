@@ -43,6 +43,7 @@ export type Settings = {
 	maxHistoryEntries?: number;
 	autoOrganizeEnabled?: boolean;
 	monitoredFolderId?: string;
+	apiRequestsPerMinute?: number;
 };
 
 export type Proposal = {
