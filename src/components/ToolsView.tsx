@@ -174,6 +174,8 @@ const checkUrlConnectivity = async (
 		lowerUrl.startsWith("about:") ||
 		lowerUrl.startsWith("file://") ||
 		lowerUrl.startsWith("javascript:") ||
+		lowerUrl.startsWith("data:") ||
+		lowerUrl.startsWith("vbscript:") ||
 		lowerUrl.startsWith("view-source:")
 	) {
 		return { alive: true, status: 200, message: "System URL" };
