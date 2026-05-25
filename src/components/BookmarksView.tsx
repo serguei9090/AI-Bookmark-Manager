@@ -1,5 +1,6 @@
 import {
 	AlertCircle,
+	ArrowUp,
 	ExternalLink,
 	Folder as FolderIcon,
 	Globe,
@@ -12,7 +13,7 @@ import {
 	Unlock,
 } from "lucide-react";
 import type React from "react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { summarizeBookmark } from "../services/aiService";
 import { useAppContext } from "../store";
 import type { Bookmark } from "../types";
@@ -31,6 +32,26 @@ export function BookmarksView() {
 	const [selectedFolderFilter, setSelectedFolderFilter] =
 		useState<string>("all");
 	const [summarizingId, setSummarizingId] = useState<string | null>(null);
+
+	// Scroll to top state & ref
+	const topRef = useRef<HTMLDivElement>(null);
+	const [showScrollTop, setShowScrollTop] = useState(false);
+
+	useEffect(() => {
+		const handleScroll = (e: Event) => {
+			const target = e.target as HTMLElement;
+			if (target && (target.scrollTop > 300 || window.scrollY > 300)) {
+				setShowScrollTop(true);
+			} else {
+				setShowScrollTop(false);
+			}
+		};
+
+		window.addEventListener("scroll", handleScroll, true);
+		return () => {
+			window.removeEventListener("scroll", handleScroll, true);
+		};
+	}, []);
 
 	// Bulk Summarize state
 	const [isBulkSummarizing, setIsBulkSummarizing] = useState(false);
@@ -228,7 +249,7 @@ export function BookmarksView() {
 	}, [bookmarks, search, selectedFolderFilter]);
 
 	return (
-		<div className="h-full flex flex-col space-y-6">
+		<div ref={topRef} className="h-full flex flex-col space-y-6 relative">
 			{/* HEADER SUMMARY SECTION */}
 			<div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
 				<div>
@@ -250,21 +271,13 @@ export function BookmarksView() {
 			</div>
 
 			{/* MINI STATS CARDS */}
-			<div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+			<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 				<div className="bg-blue-50/50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
 					<span className="text-xs font-semibold text-blue-700 dark:text-blue-400 block uppercase tracking-wider">
 						Total Stored
 					</span>
 					<span className="text-2xl font-bold dark:text-white mt-1 block">
 						{metrics.total}
-					</span>
-				</div>
-				<div className="bg-amber-50/50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30">
-					<span className="text-xs font-semibold text-amber-700 dark:text-amber-400 block uppercase tracking-wider">
-						No Folder
-					</span>
-					<span className="text-2xl font-bold dark:text-white mt-1 block">
-						{metrics.noFolder}
 					</span>
 				</div>
 				<div className="bg-emerald-50/50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
@@ -829,6 +842,18 @@ export function BookmarksView() {
 					})
 				)}
 			</div>
+
+			{/* FLOATING SCROLL TO TOP BUTTON */}
+			{showScrollTop && (
+				<button
+					type="button"
+					onClick={() => topRef.current?.scrollIntoView({ behavior: "smooth" })}
+					className="fixed bottom-8 right-8 z-[99] w-12 h-12 rounded-full bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border border-gray-200 dark:border-gray-800 shadow-xl text-blue-600 dark:text-blue-400 flex items-center justify-center hover:scale-110 active:scale-95 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-all cursor-pointer animate-fade-in"
+					title="Scroll to top"
+				>
+					<ArrowUp size={20} className="stroke-[2.5]" />
+				</button>
+			)}
 		</div>
 	);
 }

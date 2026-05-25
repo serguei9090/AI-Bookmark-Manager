@@ -11,7 +11,7 @@ function cleanAndParseJson(text: string): unknown {
 	}
 
 	// 2. Try to extract markdown code blocks if present
-	const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+	const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/iu;
 	const match = cleaned.match(codeBlockRegex);
 	if (match?.[1]) {
 		const codeBlockContent = match[1].trim();
@@ -22,18 +22,21 @@ function cleanAndParseJson(text: string): unknown {
 		}
 	}
 
-	// 3. Fallback: find the first '{' and last '}' (for objects) or first '[' and last ']' (for arrays)
-	const firstBrace = cleaned.indexOf("{");
+	// 3. Try to find the last '{' and last '}' (common for final object in chain-of-thought)
 	const lastBrace = cleaned.lastIndexOf("}");
-	const firstBracket = cleaned.indexOf("[");
-	const lastBracket = cleaned.lastIndexOf("]");
+	const lastStartBrace = cleaned.lastIndexOf("{");
+	if (lastStartBrace !== -1 && lastBrace !== -1 && lastStartBrace < lastBrace) {
+		try {
+			const objText = cleaned.substring(lastStartBrace, lastBrace + 1);
+			return JSON.parse(objText);
+		} catch (_e) {
+			// Ignore
+		}
+	}
 
-	// Try parsing object first if '{' is present and before/after corresponding parts
-	if (
-		firstBrace !== -1 &&
-		lastBrace !== -1 &&
-		(firstBracket === -1 || firstBrace < firstBracket)
-	) {
+	// 4. Try to find the first '{' and last '}' (original strategy)
+	const firstBrace = cleaned.indexOf("{");
+	if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
 		try {
 			const objText = cleaned.substring(firstBrace, lastBrace + 1);
 			return JSON.parse(objText);
@@ -42,26 +45,24 @@ function cleanAndParseJson(text: string): unknown {
 		}
 	}
 
-	// Try parsing array if '[' is present
-	if (firstBracket !== -1 && lastBracket !== -1) {
+	// 5. Try to find the first '{' and first '}'
+	const firstEndBrace = cleaned.indexOf("}");
+	if (firstBrace !== -1 && firstEndBrace !== -1 && firstBrace < firstEndBrace) {
+		try {
+			const objText = cleaned.substring(firstBrace, firstEndBrace + 1);
+			return JSON.parse(objText);
+		} catch (_e) {
+			// Ignore
+		}
+	}
+
+	// 6. Try parsing array from first '[' and last ']'
+	const firstBracket = cleaned.indexOf("[");
+	const lastBracket = cleaned.lastIndexOf("]");
+	if (firstBracket !== -1 && lastBracket !== -1 && firstBracket < lastBracket) {
 		try {
 			const arrText = cleaned.substring(firstBracket, lastBracket + 1);
 			return JSON.parse(arrText);
-		} catch (_e) {
-			// Ignore
-		}
-	}
-
-	// If we haven't succeeded, try the object parsing if we skipped it because '[' was first
-	if (
-		firstBrace !== -1 &&
-		lastBrace !== -1 &&
-		firstBracket !== -1 &&
-		firstBrace > firstBracket
-	) {
-		try {
-			const objText = cleaned.substring(firstBrace, lastBrace + 1);
-			return JSON.parse(objText);
 		} catch (_e) {
 			// Ignore
 		}
