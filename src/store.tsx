@@ -16,6 +16,7 @@ import type {
 	Toast,
 	ToastType,
 } from "./types";
+import { isExtension } from "./utils/urlUtils";
 
 // Initial Data
 const initialBookmarks: Bookmark[] = [];
@@ -46,10 +47,6 @@ const initialSettings: Settings = {
 	monitoredFolderId: "",
 	apiRequestsPerMinute: 15,
 };
-
-// Check if running inside a Chrome Extension with Bookmarks API
-const isExtension =
-	typeof chrome !== "undefined" && chrome.bookmarks !== undefined;
 
 const ENCRYPTION_KEY = "nano_banana_salt_2026";
 
@@ -722,8 +719,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 			setIsBulkSummarizing(true);
 			bulkAbortRef.current = false;
 
-			// Filter bookmarks based on mode
+			// Filter bookmarks based on mode, ensuring they are web links (http/https)
 			const targetBookmarks = bookmarks.filter((b) => {
+				const isWebLink =
+					b.url &&
+					(b.url.toLowerCase().startsWith("http://") ||
+						b.url.toLowerCase().startsWith("https://"));
+				if (!isWebLink) return false;
+
 				if (mode === "unsummarized") {
 					return b.summary === "";
 				}
@@ -1616,6 +1619,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
 			force = false,
 		) => {
 			if (!settings.autoOrganizeEnabled && !force) return;
+
+			// Skip auto-organizing non-web links (e.g. system page URLs) unless forced
+			const isWebLink =
+				url &&
+				(url.toLowerCase().startsWith("http://") ||
+					url.toLowerCase().startsWith("https://"));
+			if (!isWebLink && !force) return;
 
 			let targetMonitoredId = settings.monitoredFolderId || "";
 

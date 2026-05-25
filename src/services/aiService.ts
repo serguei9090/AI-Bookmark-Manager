@@ -212,7 +212,9 @@ async function callLlmDirect(
 
 			if (!res.ok) {
 				const errText = await res.text();
-				throw new Error(`Gemini API Error (${res.status}): ${errText}`);
+				const truncatedErr =
+					errText.length > 500 ? `${errText.substring(0, 500)}...` : errText;
+				throw new Error(`Gemini API Error (${res.status}): ${truncatedErr}`);
 			}
 
 			const data = await res.json();
@@ -228,6 +230,14 @@ async function callLlmDirect(
 
 		// Decide which endpoint to hit
 		let apiUrl = `${cleanBaseUrl}/chat/completions`;
+		if (
+			!cleanBaseUrl.includes("/v1") &&
+			!cleanBaseUrl.includes("/v1beta") &&
+			!cleanBaseUrl.endsWith("/api/generate")
+		) {
+			apiUrl = `${cleanBaseUrl}/v1/chat/completions`;
+		}
+
 		let requestBody: Record<string, unknown> = {};
 
 		const headers: Record<string, string> = {
@@ -273,8 +283,10 @@ async function callLlmDirect(
 
 		if (!res.ok) {
 			const errText = await res.text();
+			const truncatedErr =
+				errText.length > 500 ? `${errText.substring(0, 500)}...` : errText;
 			throw new Error(
-				`${provider.toUpperCase()} API Error (${res.status}): ${errText}`,
+				`${provider.toUpperCase()} API Error (${res.status}): ${truncatedErr}`,
 			);
 		}
 
@@ -303,6 +315,10 @@ export async function summarizeBookmark(
 	bookmark: Bookmark,
 	settings: Settings,
 ): Promise<{ summary: string; tags: string[] }> {
+	if (!bookmark || !bookmark.url) {
+		return { summary: "", tags: [] };
+	}
+
 	const prompt = `Provide a concise 1-2 sentence summary and max 5 tags for this bookmark. Return a JSON object with keys "summary" (string) and "tags" (array of strings).
 URL: ${bookmark.url}
 Title: ${bookmark.title}`;
@@ -422,6 +438,15 @@ export async function autoSortBookmarks(
 	folders: Folder[],
 	settings: Settings,
 ): Promise<Record<string, string | null>> {
+	if (
+		!bookmarks ||
+		bookmarks.length === 0 ||
+		!folders ||
+		folders.length === 0
+	) {
+		return {};
+	}
+
 	const systemPrompt =
 		settings.systemPrompt ||
 		"You are an intelligent bookmark manager assistant.";
@@ -498,6 +523,10 @@ export async function proposeCategories(
 	bookmarks: Bookmark[],
 	settings: Settings,
 ): Promise<Proposal[]> {
+	if (!bookmarks || bookmarks.length === 0) {
+		return [];
+	}
+
 	const systemPrompt =
 		settings.systemPrompt ||
 		"You are an intelligent bookmark manager assistant.";

@@ -16,6 +16,7 @@ import React, { useMemo, useState } from "react";
 import { fetchModels, testConnection } from "../services/aiService";
 import { useAppContext } from "../store";
 import type { AIProvider, Settings as SettingsType } from "../types";
+import { getFaviconUrl, parseDomainName } from "../utils/urlUtils";
 
 export function SimplePopupView() {
 	const { bookmarks, folders, settings, setSettings, triggerAutoOrganize } =
@@ -139,25 +140,6 @@ export function SimplePopupView() {
 	}, [settings.provider]);
 
 	const activeUrl = localUrl || defaultUrl;
-
-	// Auto-extract domain to get professional favicon
-	const getFaviconUrl = (urlStr: string) => {
-		try {
-			const url = new URL(urlStr);
-			return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
-		} catch {
-			return "";
-		}
-	};
-
-	const parseDomainName = (urlStr: string) => {
-		try {
-			const url = new URL(urlStr);
-			return url.hostname.replace("www.", "");
-		} catch {
-			return "Web Link";
-		}
-	};
 
 	const failedBookmarks = useMemo(() => {
 		const targetFolderId = showSettings

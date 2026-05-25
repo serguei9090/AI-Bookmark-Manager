@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { summarizeBookmark } from "../services/aiService";
 import { useAppContext } from "../store";
 import type { Bookmark } from "../types";
+import { getFaviconUrl, parseDomainName } from "../utils/urlUtils";
 
 export function BookmarksView() {
 	const {
@@ -72,33 +73,23 @@ export function BookmarksView() {
 	const [newFolderId, setNewFolderId] = useState<string>("none");
 	const [newTagsString, setNewTagsString] = useState("");
 
-	// Auto-extract domain to get professional favicon
-	const getFaviconUrl = (urlStr: string) => {
-		try {
-			const url = new URL(urlStr);
-			return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
-		} catch {
-			return "";
-		}
-	};
-
-	const parseDomainName = (urlStr: string) => {
-		try {
-			const url = new URL(urlStr);
-			return url.hostname.replace("www.", "");
-		} catch {
-			return "Web Link";
-		}
-	};
-
 	// Bookmark Metrics
 	const metrics = useMemo(() => {
 		const total = bookmarks.length;
-		const noFolder = bookmarks.filter((b) => b.folderId === null).length;
+		const noFolder = bookmarks.filter((b) => {
+			const monitoredId = settings.monitoredFolderId || "";
+			return (
+				b.folderId === null ||
+				b.folderId === "1" ||
+				b.folderId === "2" ||
+				b.folderId === "3" ||
+				b.folderId === monitoredId
+			);
+		}).length;
 		const locked = bookmarks.filter((b) => b.manuallyAssigned).length;
 		const summarized = bookmarks.filter((b) => b.summary !== "").length;
 		return { total, noFolder, locked, summarized };
-	}, [bookmarks]);
+	}, [bookmarks, settings]);
 
 	// Handle manual addition
 	const handleAddNew = (e: React.FormEvent) => {
@@ -138,6 +129,17 @@ export function BookmarksView() {
 
 	// Run AI summaries using the central AI service
 	const handleAISummarize = async (bookmark: Bookmark) => {
+		const isWebLink =
+			bookmark.url &&
+			(bookmark.url.toLowerCase().startsWith("http://") ||
+				bookmark.url.toLowerCase().startsWith("https://"));
+		if (!isWebLink) {
+			alert(
+				"AI summarization is only supported for web links (starting with http:// or https://).",
+			);
+			return;
+		}
+
 		setSummarizingId(bookmark.id);
 		try {
 			const data = await summarizeBookmark(bookmark, settings);
@@ -173,11 +175,19 @@ export function BookmarksView() {
 
 			// folder filter
 			if (selectedFolderFilter === "all") return matchesSearch;
-			if (selectedFolderFilter === "uncategorized")
-				return matchesSearch && !b.folderId;
+			if (selectedFolderFilter === "uncategorized") {
+				const monitoredId = settings.monitoredFolderId || "";
+				const isUncategorized =
+					!b.folderId ||
+					b.folderId === "1" ||
+					b.folderId === "2" ||
+					b.folderId === "3" ||
+					b.folderId === monitoredId;
+				return matchesSearch && isUncategorized;
+			}
 			return matchesSearch && b.folderId === selectedFolderFilter;
 		});
-	}, [bookmarks, search, selectedFolderFilter]);
+	}, [bookmarks, search, selectedFolderFilter, settings]);
 
 	return (
 		<div ref={topRef} className="h-full flex flex-col space-y-6 relative">
@@ -254,7 +264,16 @@ export function BookmarksView() {
 								>
 									<Sparkles size={14} />
 									Summarize Unsummarized (
-									{bookmarks.filter((b) => b.summary === "").length})
+									{
+										bookmarks.filter((b) => {
+											const urlLower = b.url.toLowerCase();
+											const isWebUrl =
+												urlLower.startsWith("http://") ||
+												urlLower.startsWith("https://");
+											return isWebUrl && b.summary === "";
+										}).length
+									}
+									)
 								</button>
 								<button
 									type="button"
@@ -317,7 +336,15 @@ export function BookmarksView() {
 								<>
 									You are about to summarize{" "}
 									<strong>
-										{bookmarks.filter((b) => b.summary === "").length}
+										{
+											bookmarks.filter((b) => {
+												const urlLower = b.url.toLowerCase();
+												const isWebUrl =
+													urlLower.startsWith("http://") ||
+													urlLower.startsWith("https://");
+												return isWebUrl && b.summary === "";
+											}).length
+										}
 									</strong>{" "}
 									bookmarks that do not have any summaries. Bookmarks with
 									existing summaries will be skipped.

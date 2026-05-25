@@ -22,33 +22,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAppContext } from "../store";
 import type { Bookmark, HealthScanHistoryEntry } from "../types";
-
-// Helper to check if running inside a real Chrome extension
-const isExtension =
-	typeof chrome !== "undefined" && chrome.bookmarks !== undefined;
-
-const isUrlIgnored = (url: string, ignoredSites: string[]): boolean => {
-	try {
-		const parsed = new URL(url);
-		const host = parsed.hostname.toLowerCase();
-		return ignoredSites.some((site) => {
-			const cleanSite = site.trim().toLowerCase();
-			if (!cleanSite) return false;
-			return host === cleanSite || host.endsWith(`.${cleanSite}`);
-		});
-	} catch {
-		return false;
-	}
-};
-
-const getUrlDomain = (url: string): string => {
-	try {
-		const parsed = new URL(url);
-		return parsed.hostname.toLowerCase();
-	} catch {
-		return "";
-	}
-};
+import { getUrlDomain, isExtension, isUrlIgnored } from "../utils/urlUtils";
 
 interface ScanResult {
 	alive: boolean;

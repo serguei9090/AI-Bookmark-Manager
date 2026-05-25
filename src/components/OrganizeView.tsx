@@ -25,6 +25,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { autoSortBookmarks } from "../services/aiService";
 import { useAppContext } from "../store";
 import type { Folder as FolderType } from "../types";
+import { getFaviconUrl, parseDomainName } from "../utils/urlUtils";
 
 const CHROME_ROOT_IDS = new Set(["0", "1", "2", "3"]);
 
@@ -172,39 +173,6 @@ export function OrganizeView() {
 		);
 	}, [folders, getFolderBookmarkCount]);
 
-	// Helper to map blueprint folder IDs to real Chrome folder IDs by matching names
-	const _getRealFolderId = (aiFolderId: string | null): string | null => {
-		if (!aiFolderId) return null;
-		const aiFolder = aiFolders.find((f) => f.id === aiFolderId);
-		if (!aiFolder) return null;
-		const realFolder = folders.find(
-			(rf) =>
-				rf.id === aiFolder.id ||
-				rf.name.toLowerCase() === aiFolder.name.toLowerCase(),
-		);
-		return realFolder ? realFolder.id : null;
-	};
-
-	// Get favicon URL
-	const getFaviconUrl = (urlStr: string) => {
-		try {
-			const url = new URL(urlStr);
-			return `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
-		} catch {
-			return "";
-		}
-	};
-
-	// Parse Domain
-	const parseDomainName = useCallback((urlStr: string) => {
-		try {
-			const url = new URL(urlStr);
-			return url.hostname.replace("www.", "");
-		} catch {
-			return "Web Link";
-		}
-	}, []);
-
 	// Get real folder list tree nodes
 	const rootRealFolders = useMemo(() => {
 		return folders.filter((f) => !f.parentId);
@@ -237,7 +205,14 @@ export function OrganizeView() {
 			// 2. Folder filter
 			if (selectedFolderFilter !== "all") {
 				if (selectedFolderFilter === "uncategorized") {
-					if (b.folderId !== null) return false;
+					const monitoredId = settings.monitoredFolderId || "";
+					const isUncategorized =
+						b.folderId === null ||
+						b.folderId === "1" ||
+						b.folderId === "2" ||
+						b.folderId === "3" ||
+						b.folderId === monitoredId;
+					if (!isUncategorized) return false;
 				} else {
 					if (b.folderId !== selectedFolderFilter) return false;
 				}
@@ -273,7 +248,7 @@ export function OrganizeView() {
 		filterLock,
 		sortField,
 		folders,
-		parseDomainName,
+		settings,
 	]);
 
 	// Pagination Calculations
@@ -404,22 +379,39 @@ export function OrganizeView() {
 					return includeManual || !b.manuallyAssigned;
 				} else {
 					// smart
-					return !b.manuallyAssigned && !b.folderId;
+					const monitoredId = settings.monitoredFolderId || "";
+					const isUncategorized =
+						!b.folderId ||
+						b.folderId === "1" ||
+						b.folderId === "2" ||
+						b.folderId === "3" ||
+						b.folderId === monitoredId;
+					return !b.manuallyAssigned && isUncategorized;
 				}
 			});
 
-			if (targets.length === 0) {
-				alert("No bookmarks eligible for sorting.");
+			// Filter to web links (http/https) for AI sorting
+			const webTargets = targets.filter(
+				(b) =>
+					b.url &&
+					(b.url.toLowerCase().startsWith("http://") ||
+						b.url.toLowerCase().startsWith("https://")),
+			);
+
+			if (webTargets.length === 0) {
+				alert(
+					"No bookmarks eligible for sorting. (Note: AI sorting only supports web links starting with http:// or https://)",
+				);
 				setIsSorting(false);
 				setSortStatus("");
 				return;
 			}
 
-			setSortStatus(`Sorting ${targets.length} bookmarks...`);
-			const mapping = await autoSortBookmarks(targets, aiFolders, settings);
+			setSortStatus(`Sorting ${webTargets.length} bookmarks...`);
+			const mapping = await autoSortBookmarks(webTargets, aiFolders, settings);
 
 			let reorganizedCount = 0;
-			const skippedCount = bookmarks.length - targets.length;
+			const skippedCount = bookmarks.length - webTargets.length;
 
 			if (mapping && Object.keys(mapping).length > 0) {
 				// Collect all unique target AI folder IDs that are NOT null
@@ -525,7 +517,16 @@ export function OrganizeView() {
 	};
 
 	const handleSmartClick = () => {
-		const targets = bookmarks.filter((b) => !b.manuallyAssigned && !b.folderId);
+		const monitoredId = settings.monitoredFolderId || "";
+		const targets = bookmarks.filter((b) => {
+			const isUncategorized =
+				!b.folderId ||
+				b.folderId === "1" ||
+				b.folderId === "2" ||
+				b.folderId === "3" ||
+				b.folderId === monitoredId;
+			return !b.manuallyAssigned && isUncategorized;
+		});
 		if (targets.length === 0) {
 			alert(
 				"No bookmarks eligible for Smart Sorting (all bookmarks are already categorized or locked).",
@@ -850,7 +851,19 @@ export function OrganizeView() {
 						<HelpCircle size={14} className="shrink-0 text-gray-400" />
 						<span>
 							📂 Uncategorized (
-							{bookmarks.filter((b) => b.folderId === null).length})
+							{
+								bookmarks.filter((b) => {
+									const monitoredId = settings.monitoredFolderId || "";
+									return (
+										b.folderId === null ||
+										b.folderId === "1" ||
+										b.folderId === "2" ||
+										b.folderId === "3" ||
+										b.folderId === monitoredId
+									);
+								}).length
+							}
+							)
 						</span>
 					</button>
 
@@ -899,7 +912,19 @@ export function OrganizeView() {
 									<span className="text-xs font-normal text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-md">
 										Filter:{" "}
 										{selectedFolderFilter === "uncategorized"
-											? `Uncategorized (${bookmarks.filter((b) => b.folderId === null).length} items)`
+											? `Uncategorized (${
+													bookmarks.filter((b) => {
+														const monitoredId =
+															settings.monitoredFolderId || "";
+														return (
+															b.folderId === null ||
+															b.folderId === "1" ||
+															b.folderId === "2" ||
+															b.folderId === "3" ||
+															b.folderId === monitoredId
+														);
+													}).length
+												} items)`
 											: (() => {
 													const f = folders.find(
 														(f) => f.id === selectedFolderFilter,
@@ -1106,8 +1131,17 @@ export function OrganizeView() {
 													<span className="text-[10px] text-gray-400 group-hover/item:text-gray-600 font-mono shrink-0">
 														(
 														{
-															bookmarks.filter((b) => b.folderId === null)
-																.length
+															bookmarks.filter((b) => {
+																const monitoredId =
+																	settings.monitoredFolderId || "";
+																return (
+																	b.folderId === null ||
+																	b.folderId === "1" ||
+																	b.folderId === "2" ||
+																	b.folderId === "3" ||
+																	b.folderId === monitoredId
+																);
+															}).length
 														}
 														)
 													</span>

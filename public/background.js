@@ -29,7 +29,37 @@ function getDecryptedSettings(settings) {
 	};
 }
 
-async function callLlmDirect(settings, systemPrompt, prompt) {
+let lastRequestStartTime = 0;
+
+async function wait(ms) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function enforceRateLimit(settings) {
+	const rpm = settings.apiRequestsPerMinute ?? 15;
+	if (rpm <= 0) return;
+
+	const minInterval = 60000 / rpm;
+	const now = Date.now();
+	const timeSinceLast = now - lastRequestStartTime;
+
+	if (timeSinceLast < minInterval) {
+		const waitTime = minInterval - timeSinceLast;
+		lastRequestStartTime = lastRequestStartTime + minInterval;
+		await wait(waitTime);
+	} else {
+		lastRequestStartTime = now;
+	}
+}
+
+async function callLlmDirect(
+	settings,
+	systemPrompt,
+	prompt,
+	responseSchema = undefined,
+	jsonMode = true,
+) {
+	await enforceRateLimit(settings);
 	const { provider, model, temperature, maxTokens } = settings;
 	let baseUrl = "";
 	let apiKey = "";
@@ -51,6 +81,17 @@ async function callLlmDirect(settings, systemPrompt, prompt) {
 		apiKey = settings.customApiKey || "";
 	}
 
+	if (provider === "gemini" && !apiKey) {
+		throw new Error(
+			"Gemini API Key is missing. Please enter your API Key in Settings.",
+		);
+	}
+	if (provider === "openai" && !apiKey) {
+		throw new Error(
+			"OpenAI API Key is missing. Please enter your API Key in Settings.",
+		);
+	}
+
 	const cleanBaseUrl = baseUrl.replace(/\/$/, "");
 
 	if (provider === "gemini") {
@@ -64,67 +105,372 @@ async function callLlmDirect(settings, systemPrompt, prompt) {
 				{ role: "user", parts: [{ text: `${systemPrompt}\n\n${prompt}` }] },
 			],
 			generationConfig: {
-				responseMimeType: "application/json",
 				temperature: temperature ?? 0.7,
 				...(maxTokens > 0 ? { maxOutputTokens: maxTokens } : {}),
 			},
 		};
+
+		if (jsonMode) {
+			body.generationConfig.responseMimeType = "application/json";
+			if (responseSchema) {
+				body.generationConfig.responseSchema = responseSchema;
+			}
+		}
 
 		const res = await fetch(apiUrl, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),
 		});
-		if (!res.ok) throw new Error(`Gemini API Error: ${res.status}`);
+		if (!res.ok) {
+			const errText = await res.text();
+			throw new Error(`Gemini API Error (${res.status}): ${errText}`);
+		}
 		const data = await res.json();
-		return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+		const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+		if (!content) {
+			throw new Error("Gemini API returned an empty or invalid structure.");
+		}
+		return content;
 	}
 
-	const apiUrl = `${cleanBaseUrl}/chat/completions`;
-	const requestBody = {
-		model: model || (provider === "openai" ? "gpt-4o-mini" : "local-model"),
-		messages: [
-			{ role: "system", content: systemPrompt },
-			{ role: "user", content: prompt },
-		],
-		temperature: temperature || 0.7,
-		...(maxTokens > 0 ? { max_tokens: maxTokens } : {}),
-		response_format: { type: "json_object" },
-	};
+	let apiUrl = `${cleanBaseUrl}/chat/completions`;
+	if (
+		!cleanBaseUrl.includes("/v1") &&
+		!cleanBaseUrl.includes("/v1beta") &&
+		!cleanBaseUrl.endsWith("/api/generate")
+	) {
+		apiUrl = `${cleanBaseUrl}/v1/chat/completions`;
+	}
+
+	let requestBody = {};
 
 	const headers = { "Content-Type": "application/json" };
 	if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
+	if (provider === "ollama" && cleanBaseUrl.endsWith("/api/generate")) {
+		apiUrl = cleanBaseUrl;
+		requestBody = {
+			model: model || "llama3",
+			prompt: `${systemPrompt}\n\n${prompt}`,
+			stream: false,
+			...(jsonMode ? { format: "json" } : {}),
+			options: {
+				temperature: temperature || 0.7,
+				...(maxTokens > 0 ? { num_predict: maxTokens } : {}),
+			},
+		};
+	} else {
+		requestBody = {
+			model: model || (provider === "openai" ? "gpt-4o-mini" : "local-model"),
+			messages: [
+				{ role: "system", content: systemPrompt },
+				{ role: "user", content: prompt },
+			],
+			temperature: temperature || 0.7,
+			...(maxTokens > 0 ? { max_tokens: maxTokens } : {}),
+			...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+		};
+	}
 
 	const res = await fetch(apiUrl, {
 		method: "POST",
 		headers,
 		body: JSON.stringify(requestBody),
 	});
-	if (!res.ok)
-		throw new Error(`${provider.toUpperCase()} API Error: ${res.status}`);
+	if (!res.ok) {
+		const errText = await res.text();
+		const truncatedErr =
+			errText.length > 500 ? `${errText.substring(0, 500)}...` : errText;
+		throw new Error(
+			`${provider.toUpperCase()} API Error (${res.status}): ${truncatedErr}`,
+		);
+	}
 	const data = await res.json();
-	return data.choices?.[0]?.message?.content || "";
+
+	if (provider === "ollama" && cleanBaseUrl.endsWith("/api/generate")) {
+		if (!data.response) {
+			throw new Error("Ollama API returned an empty response.");
+		}
+		return data.response;
+	}
+
+	const content = data.choices?.[0]?.message?.content;
+	if (content === undefined || content === null) {
+		throw new Error(
+			`${provider.toUpperCase()} API returned an empty content payload.`,
+		);
+	}
+	return content;
 }
 
 function cleanAndParseJson(text) {
+	const cleaned = text.trim();
+
+	// 1. Try to parse directly
 	try {
-		return JSON.parse(text.trim());
-	} catch (e) {
-		const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-		if (match?.[1]) {
-			try {
-				return JSON.parse(match[1].trim());
-			} catch (_) {}
-		}
-		const firstBrace = text.indexOf("{");
-		const lastBrace = text.lastIndexOf("}");
-		if (firstBrace !== -1 && lastBrace !== -1) {
-			try {
-				return JSON.parse(text.substring(firstBrace, lastBrace + 1));
-			} catch (_) {}
-		}
-		throw e;
+		return JSON.parse(cleaned);
+	} catch (_e) {
+		// Ignore and try cleaning
 	}
+
+	// 2. Try to extract markdown code blocks if present
+	const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/iu;
+	const match = cleaned.match(codeBlockRegex);
+	if (match?.[1]) {
+		const codeBlockContent = match[1].trim();
+		try {
+			return JSON.parse(codeBlockContent);
+		} catch (_e) {
+			// Ignore and fall through
+		}
+	}
+
+	// 3. Try to find the last '{' and last '}' (common for final object in chain-of-thought)
+	const lastBrace = cleaned.lastIndexOf("}");
+	const lastStartBrace = cleaned.lastIndexOf("{");
+	if (lastStartBrace !== -1 && lastBrace !== -1 && lastStartBrace < lastBrace) {
+		try {
+			const objText = cleaned.substring(lastStartBrace, lastBrace + 1);
+			return JSON.parse(objText);
+		} catch (_e) {
+			// Ignore
+		}
+	}
+
+	// 4. Try to find the first '{' and last '}' (original strategy)
+	const firstBrace = cleaned.indexOf("{");
+	if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
+		try {
+			const objText = cleaned.substring(firstBrace, lastBrace + 1);
+			return JSON.parse(objText);
+		} catch (_e) {
+			// Ignore
+		}
+	}
+
+	// 5. Try to find the first '{' and first '}'
+	const firstEndBrace = cleaned.indexOf("}");
+	if (firstBrace !== -1 && firstEndBrace !== -1 && firstBrace < firstEndBrace) {
+		try {
+			const objText = cleaned.substring(firstBrace, firstEndBrace + 1);
+			return JSON.parse(objText);
+		} catch (_e) {
+			// Ignore
+		}
+	}
+
+	// 6. Try parsing array from first '[' and last ']'
+	const firstBracket = cleaned.indexOf("[");
+	const lastBracket = cleaned.lastIndexOf("]");
+	if (firstBracket !== -1 && lastBracket !== -1 && firstBracket < lastBracket) {
+		try {
+			const arrText = cleaned.substring(firstBracket, lastBracket + 1);
+			return JSON.parse(arrText);
+		} catch (_e) {
+			// Ignore
+		}
+	}
+
+	// If all fails, throw original parsing error
+	return JSON.parse(cleaned);
+}
+
+async function summarizeBookmark(bookmark, settings) {
+	if (!bookmark?.url) {
+		return { summary: "", tags: [] };
+	}
+
+	const prompt = `Provide a concise 1-2 sentence summary and max 5 tags for this bookmark. Return a JSON object with keys "summary" (string) and "tags" (array of strings).\nURL: ${bookmark.url}\nTitle: ${bookmark.title}`;
+
+	const schema = {
+		type: "OBJECT",
+		properties: {
+			summary: { type: "STRING" },
+			tags: {
+				type: "ARRAY",
+				items: { type: "STRING" },
+			},
+		},
+		required: ["summary", "tags"],
+	};
+
+	let responseText = "";
+	try {
+		responseText = await callLlmDirect(
+			settings,
+			settings.systemPrompt ||
+				"You are an intelligent bookmark manager assistant.",
+			prompt,
+			schema,
+		);
+	} catch (e) {
+		console.warn(
+			"Attempt 1 (with schema) failed for summarize in background:",
+			bookmark.title,
+			e,
+		);
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			responseText = await callLlmDirect(
+				settings,
+				settings.systemPrompt ||
+					"You are an intelligent bookmark manager assistant.",
+				`${prompt}\nIMPORTANT: You must return ONLY a raw JSON object with keys "summary" (string) and "tags" (array of strings). Do NOT include any introductory or concluding text, markdown code blocks, or bullet points. Just start with '{' and end with '}'.`,
+				undefined,
+			);
+		} catch (e2) {
+			throw new Error(
+				`AI inference failed: ${e2 instanceof Error ? e2.message : String(e2)}`,
+			);
+		}
+	}
+
+	let parsed = {};
+	try {
+		parsed = cleanAndParseJson(responseText);
+	} catch (err) {
+		console.warn(
+			"JSON parsing failed, attempting text heuristic parsing for:",
+			responseText,
+			err,
+		);
+		// Try heuristic text parsing
+		const summaryMatch = responseText.match(
+			/(?:summary|desc|description):\s*([^\n]+)/iu,
+		);
+		const tagsMatch = responseText.match(/(?:tags|keywords):\s*([^\n]+)/iu);
+
+		let summary = "";
+		let tags = [];
+
+		if (summaryMatch?.[1]) {
+			summary = summaryMatch[1].trim();
+		} else {
+			// If no "summary:" header, take the first 1-2 sentences of the text as summary
+			const sentences = responseText
+				.split(/[.!?\n]+/u)
+				.map((s) => s.trim())
+				.filter(Boolean);
+			// Filter out bullet points/stars at the start of sentences
+			const cleanSentences = sentences
+				.map((s) => s.replace(/^[*\s\d.-]+/u, "").trim())
+				.filter(Boolean);
+			if (cleanSentences.length > 0) {
+				summary = `${cleanSentences.slice(0, 2).join(". ")}.`;
+			}
+		}
+
+		if (tagsMatch?.[1]) {
+			tags = tagsMatch[1]
+				.split(/[\s,#;]+/u)
+				.map((t) =>
+					t
+						.trim()
+						.toLowerCase()
+						.replace(/[^\p{L}\p{N}_-]+/gu, ""),
+				)
+				.filter(
+					(t) => t.length > 1 && !t.includes("tag") && !t.includes("keyword"),
+				);
+		} else {
+			// Try to find any hashtags in the text
+			const hashTags = responseText.match(/#\p{L}+/gu);
+			if (hashTags) {
+				tags = hashTags.map((t) => t.slice(1).toLowerCase());
+			}
+		}
+
+		parsed = { summary, tags };
+	}
+
+	return {
+		summary: parsed.summary ?? "",
+		tags: parsed.tags ?? [],
+	};
+}
+
+async function autoSortBookmarks(bookmarks, folders, settings) {
+	if (
+		!bookmarks ||
+		bookmarks.length === 0 ||
+		!folders ||
+		folders.length === 0
+	) {
+		return {};
+	}
+
+	const systemPrompt =
+		settings.systemPrompt ||
+		"You are an intelligent bookmark manager assistant.";
+
+	const prompt = `You are an expert bookmark organizer. Please categorize these bookmarks into the provided folders.
+Return a JSON object with a single key "mappings" containing a list of mappings, where each mapping links a bookmarkId to the best-matching folderId. If no good folder matches, use null.
+
+Folders:
+${folders.map((f) => `- ID: ${f.id}, Name: ${f.name}, Context: ${f.promptContext}`).join("\n")}
+
+Bookmarks:
+${bookmarks.map((b) => `- ID: ${b.id}, URL: ${b.url}, Title: ${b.title}`).join("\n")}`;
+
+	const schema = {
+		type: "OBJECT",
+		properties: {
+			mappings: {
+				type: "ARRAY",
+				description: "List of bookmark folder mappings.",
+				items: {
+					type: "OBJECT",
+					properties: {
+						bookmarkId: { type: "STRING" },
+						folderId: {
+							type: "STRING",
+							description:
+								"The best-matching folder ID, or null / 'null' / empty string if no folder matches.",
+						},
+					},
+					required: ["bookmarkId", "folderId"],
+				},
+			},
+		},
+		required: ["mappings"],
+	};
+
+	let responseText = "";
+	try {
+		responseText = await callLlmDirect(settings, systemPrompt, prompt, schema);
+	} catch (e) {
+		console.warn(
+			"Attempt 1 (with schema) failed for autoSortBookmarks in background:",
+			e,
+		);
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			responseText = await callLlmDirect(
+				settings,
+				systemPrompt,
+				`${prompt}\nIMPORTANT: You must return valid JSON with a single "mappings" key containing folder ID mapping objects.`,
+				undefined,
+			);
+		} catch (e2) {
+			throw new Error(
+				`AI inference failed: ${e2 instanceof Error ? e2.message : String(e2)}`,
+			);
+		}
+	}
+	const parsed = cleanAndParseJson(responseText);
+
+	const mappingObj = {};
+	if (parsed && Array.isArray(parsed.mappings)) {
+		for (const item of parsed.mappings) {
+			if (item?.bookmarkId) {
+				const fid = item.folderId;
+				mappingObj[item.bookmarkId] =
+					fid === null || fid === "null" || fid === "" ? null : fid;
+			}
+		}
+	}
+	return mappingObj;
 }
 
 async function triggerBackgroundAutoOrganize(id, title, url, folderId) {
@@ -188,37 +534,36 @@ async function triggerBackgroundAutoOrganize(id, title, url, folderId) {
 
 		if (folderId !== targetMonitoredId) return;
 
-		const systemPrompt =
-			settings.systemPrompt ||
-			"You are an intelligent bookmark manager assistant.";
-		const summaryText = await callLlmDirect(
-			settings,
-			systemPrompt,
-			`Provide a concise 1-2 sentence summary and max 5 tags for this bookmark. Return a JSON object with keys "summary" (string) and "tags" (array of strings).\nURL: ${url}\nTitle: ${title}`,
-		);
+		const bmObj = {
+			id,
+			title,
+			url,
+			folderId,
+			tags: [],
+			summary: "",
+			dateAdded: Date.now(),
+		};
 
-		const parsed = cleanAndParseJson(summaryText);
-		const summary = parsed.summary || "";
-		const tags = parsed.tags || [];
+		const aiResult = await summarizeBookmark(bmObj, settings);
+		const summary = aiResult.summary || "";
+		const tags = aiResult.tags || [];
 
 		const aiFolders = storage.bm_blueprint_folders || [];
-		const sortText = await callLlmDirect(
+
+		const bmWithAi = {
+			...bmObj,
+			tags,
+			summary,
+		};
+
+		const sortingMapping = await autoSortBookmarks(
+			[bmWithAi],
+			aiFolders,
 			settings,
-			systemPrompt,
-			`You are an expert bookmark organizer. Please categorize these bookmarks into the provided folders.\nReturn a JSON object with a key "mappings" containing a list of mappings linking bookmarkId to folderId.\n\nFolders:\n${aiFolders.map((f) => `- ID: ${f.id}, Name: ${f.name}, Context: ${f.promptContext}`).join("\n")}\n\nBookmarks:\n- ID: ${id}, URL: ${url}, Title: ${title}`,
 		);
 
-		const parsedSort = cleanAndParseJson(sortText);
-		let matchedAiFolderId = null;
-		if (
-			parsedSort &&
-			Array.isArray(parsedSort.mappings) &&
-			parsedSort.mappings[0]
-		) {
-			matchedAiFolderId = parsedSort.mappings[0].folderId;
-		}
-
 		let destRealFolderId = null;
+		const matchedAiFolderId = sortingMapping[id];
 		if (matchedAiFolderId && matchedAiFolderId !== "null") {
 			const aiFolder = aiFolders.find((f) => f.id === matchedAiFolderId);
 			if (aiFolder) {
@@ -286,12 +631,15 @@ async function triggerBackgroundAutoOrganize(id, title, url, folderId) {
 
 chrome.bookmarks.onCreated.addListener((id, node) => {
 	if (node.url) {
-		triggerBackgroundAutoOrganize(
-			id,
-			node.title,
-			node.url,
-			node.parentId || null,
-		);
+		const urlLower = node.url.toLowerCase();
+		if (urlLower.startsWith("http://") || urlLower.startsWith("https://")) {
+			triggerBackgroundAutoOrganize(
+				id,
+				node.title,
+				node.url,
+				node.parentId || null,
+			);
+		}
 	}
 });
 

@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import { autoSortBookmarks, proposeCategories } from "../services/aiService";
 import { useAppContext } from "../store";
 import type { Folder, Proposal } from "../types";
+import { getRealFolderId as sharedGetRealFolderId } from "../utils/folderUtils";
 
 export function CategoriesView() {
 	const {
@@ -47,17 +48,8 @@ export function CategoriesView() {
 	const [inlinePromptContext, setInlinePromptContext] = useState("");
 
 	// Helper to map blueprint folder IDs to real Chrome folder IDs by matching names
-	const getRealFolderId = (aiFolderId: string | null): string | null => {
-		if (!aiFolderId) return null;
-		const aiFolder = aiFolders.find((f) => f.id === aiFolderId);
-		if (!aiFolder) return null;
-		const realFolder = folders.find(
-			(rf) =>
-				rf.id === aiFolder.id ||
-				rf.name.toLowerCase() === aiFolder.name.toLowerCase(),
-		);
-		return realFolder ? realFolder.id : null;
-	};
+	const getRealFolderId = (aiFolderId: string | null): string | null =>
+		sharedGetRealFolderId(aiFolderId, aiFolders, folders);
 
 	const handleInlineCreateFolder = (parentId: string | null) => {
 		if (!inlineFolderName.trim()) return;
@@ -82,7 +74,24 @@ export function CategoriesView() {
 	const handleAutoSort = async () => {
 		setIsSorting(true);
 		try {
-			const mapping = await autoSortBookmarks(bookmarks, aiFolders, settings);
+			const webBookmarks = bookmarks.filter(
+				(b) =>
+					b.url &&
+					(b.url.toLowerCase().startsWith("http://") ||
+						b.url.toLowerCase().startsWith("https://")),
+			);
+			if (webBookmarks.length === 0) {
+				alert(
+					"No bookmarks eligible for sorting. AI sorting is only supported for web links (http/https).",
+				);
+				setIsSorting(false);
+				return;
+			}
+			const mapping = await autoSortBookmarks(
+				webBookmarks,
+				aiFolders,
+				settings,
+			);
 			if (mapping && Object.keys(mapping).length > 0) {
 				const updatedBms = bookmarks.map((b) => {
 					if (b.manuallyAssigned) return b;
@@ -148,7 +157,13 @@ export function CategoriesView() {
 	const handlePropose = async () => {
 		setIsProposing(true);
 		try {
-			const proposed = await proposeCategories(bookmarks, settings);
+			const webBookmarks = bookmarks.filter(
+				(b) =>
+					b.url &&
+					(b.url.toLowerCase().startsWith("http://") ||
+						b.url.toLowerCase().startsWith("https://")),
+			);
+			const proposed = await proposeCategories(webBookmarks, settings);
 			if (proposed && proposed.length > 0) {
 				setProposals(proposed);
 			} else {
