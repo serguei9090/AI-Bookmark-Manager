@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-05-25
+
+### Added
+- **Frontend Utility Deduplication**: Consolidated duplicate helpers (`getFaviconUrl`, `parseDomainName`, `isExtension`, `isUrlIgnored`, `getUrlDomain`, `getRealFolderId`) into shared utility modules (`src/utils/urlUtils.ts` and `src/utils/folderUtils.ts`), reducing code redundancy and bundle size.
+
+### Fixed
+- **AI Logic Audit & Reliability Fixes**: Filtered out non-web link URLs (e.g. `chrome://`, `file://`, `javascript:`, `about:`) from automated organization, batch summarization, and manual AI requests to prevent API exceptions on system pages.
+- **Background API Key Checks**: Implemented fast-fail API key checks in the background service worker matching the React foreground to return clear error responses.
+- **Uncategorized Bookmark Counts**: Unified root bookmark detection across all views. Integrated Chrome folder IDs (`"1"`, `"2"`, `"3"`) and custom monitored folders (`ToSort`) into workspace headers and move dropdown lists in `OrganizeView.tsx` to fix incorrect zero counts under extension mode.
+
 ## [0.5.0] - 2026-05-24
 
 ### Added
